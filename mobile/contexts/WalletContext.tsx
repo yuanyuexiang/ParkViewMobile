@@ -52,55 +52,15 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
             icons: ['https://parkview.app/icon.png'],
           },
           storage: walletConnectStorage as any,
+          logger: 'error', // 只显示错误日志，避免太多警告信息
         });
         
         setSignClient(client);
         setIsInitialized(true);
-        console.log('✅ WalletConnect SignClient initialized');
-
-        // 恢复之前的会话（如果有）
-        try {
-          const sessions = client.session.getAll();
-          if (sessions.length > 0) {
-            const lastSession = sessions[sessions.length - 1];
-            setSession(lastSession);
-            const addr = lastSession.namespaces.eip155.accounts[0].split(':')[2];
-            setAddress(addr);
-            console.log('✅ Restored session:', addr);
-          }
-        } catch (sessionError) {
-          console.log('⚠️ No session to restore:', sessionError);
-        }
+        console.log('✅ WalletConnect SignClient initialized successfully');
       } catch (error) {
         console.error('❌ Failed to init SignClient:', error);
-        
-        // 如果初始化失败，尝试清除损坏的数据并重试
-        try {
-          console.log('🗑️ Clearing corrupted WalletConnect data and retrying...');
-          const keys = await walletConnectStorage.getKeys();
-          for (const key of keys) {
-            await walletConnectStorage.removeItem(key);
-          }
-          
-          // 重试初始化
-          const client = await SignClient.init({
-            projectId: PROJECT_ID,
-            metadata: {
-              name: 'ParkView',
-              description: '去中心化停车位租赁平台',
-              url: 'https://parkview.app',
-              icons: ['https://parkview.app/icon.png'],
-            },
-            storage: walletConnectStorage as any,
-          });
-          
-          setSignClient(client);
-          setIsInitialized(true);
-          console.log('✅ WalletConnect SignClient initialized (after retry)');
-        } catch (retryError) {
-          console.error('❌ Failed to init SignClient even after clearing data:', retryError);
-          setIsInitialized(false);
-        }
+        setIsInitialized(false);
       }
     };
 

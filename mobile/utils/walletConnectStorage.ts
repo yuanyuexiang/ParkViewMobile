@@ -20,7 +20,8 @@ export class WalletConnectStorage {
 
   async getEntries<T = any>(): Promise<[string, T][]> {
     try {
-      const entries = Array.from(this.store.entries()) as [string, T][];
+      const entries = Array.from(this.store.entries())
+        .filter(([_, value]) => value !== undefined) as [string, T][];
       console.log('📦 Storage getEntries:', entries.length, 'entries');
       return entries;
     } catch (error) {
@@ -29,17 +30,15 @@ export class WalletConnectStorage {
     }
   }
 
-  async getItem<T = any>(key: string): Promise<T | null> {
+  async getItem<T = any>(key: string): Promise<T | undefined> {
     try {
       const value = this.store.get(key);
-      if (value === undefined) {
-        return null;
-      }
       console.log('📖 Storage getItem:', key, '- found:', !!value);
-      return value as T;
+      // 返回 undefined 而不是 null，因为 WalletConnect 期望 undefined
+      return value as T | undefined;
     } catch (error) {
       console.error(`Storage getItem error for key ${key}:`, error);
-      return null;
+      return undefined;
     }
   }
 
