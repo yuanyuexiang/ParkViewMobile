@@ -4,6 +4,7 @@ import { useAllParkingSpots, useTerminateRental } from '@/mobile/hooks/useParkin
 import { formatEther } from 'viem';
 import { useEffect, useState } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useLanguage } from '@/mobile/contexts/LanguageContext';
 
 /**
  * 我的租赁页面 - 优化版
@@ -15,6 +16,7 @@ export default function MyRentalsScreen() {
   const { terminateRental, isPending: isTerminating } = useTerminateRental();
   const [myRentals, setMyRentals] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const { t } = useLanguage();
 
   // 下拉刷新
   const onRefresh = async () => {
@@ -64,20 +66,20 @@ export default function MyRentalsScreen() {
   const getRentalStatus = (endTime: bigint) => {
     const { days, expired } = getRemainingTime(endTime);
     
-    if (expired) return { text: '已到期', color: '#f5222d', icon: 'alert-circle' };
-    if (days <= 1) return { text: '即将到期', color: '#ff9800', icon: 'clock-alert' };
-    return { text: '租用中', color: '#52c41a', icon: 'check-circle' };
+    if (expired) return { text: t('myRentals.expired'), color: '#f5222d', icon: 'alert-circle' };
+    if (days <= 1) return { text: t('myRentals.expiringSoon'), color: '#ff9800', icon: 'clock-alert' };
+    return { text: t('myRentals.renting'), color: '#52c41a', icon: 'check-circle' };
   };
 
   // 处理退租
   const handleTerminateRental = async (spotId: bigint, spotName: string) => {
     Alert.alert(
-      '确认退租',
-      `确定要退租 "${spotName}" 吗?\n\n注意: 退租后不会退还已支付的租金`,
+      t('myRentals.terminateConfirm'),
+      t('myRentals.terminateMessage', { name: spotName }),
       [
-        { text: '取消', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: '确定退租',
+          text: t('myRentals.confirmTerminate'),
           style: 'destructive',
           onPress: async () => {
             try {
@@ -87,7 +89,7 @@ export default function MyRentalsScreen() {
               await refetch(); // 刷新列表
             } catch (error: any) {
               console.error('❌ 退租失败:', error);
-              Alert.alert('退租失败', error.message || '无法完成退租，请重试');
+              Alert.alert(t('myRentals.terminateFailed'), error.message || t('myRentals.terminateFailedMessage'));
             }
           },
         },
@@ -101,9 +103,9 @@ export default function MyRentalsScreen() {
         <View style={styles.content}>
           <View style={styles.emptyCard}>
             <MaterialCommunityIcons name="wallet-outline" size={48} color="#999" />
-            <Text style={styles.emptyText}>请先连接钱包</Text>
+            <Text style={styles.emptyText}>{t('wallet.connectFirst')}</Text>
             <Text style={styles.emptySubtext}>
-              前往个人中心连接钱包后,即可查看您的租赁记录
+              {t('myRentals.connectWalletMessage')}
             </Text>
           </View>
         </View>
@@ -115,7 +117,7 @@ export default function MyRentalsScreen() {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#1890ff" />
-        <Text style={styles.loadingText}>正在从链上加载租赁数据...</Text>
+        <Text style={styles.loadingText}>{t('myRentals.loading')}</Text>
       </View>
     );
   }
@@ -125,10 +127,10 @@ export default function MyRentalsScreen() {
       <View style={styles.container}>
         <View style={styles.content}>
           <View style={styles.errorCard}>
-            <Text style={styles.errorText}>❌ 加载失败</Text>
+            <Text style={styles.errorText}>❌ {t('common.loadFailed')}</Text>
             <Text style={styles.errorSubtext}>{error.message}</Text>
             <TouchableOpacity style={styles.retryButton} onPress={refetch}>
-              <Text style={styles.buttonText}>重试</Text>
+              <Text style={styles.buttonText}>{t('common.retry')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -145,7 +147,7 @@ export default function MyRentalsScreen() {
     >
       <View style={styles.content}>
         <View style={styles.header}>
-          <Text style={styles.title}>我的租赁</Text>
+          <Text style={styles.title}>{t('myRentals.title')}</Text>
           <TouchableOpacity onPress={refetch}>
             <MaterialCommunityIcons name="refresh" size={24} color="#1890ff" />
           </TouchableOpacity>
@@ -154,12 +156,12 @@ export default function MyRentalsScreen() {
         {myRentals.length === 0 ? (
           <View style={styles.emptyCard}>
             <MaterialCommunityIcons name="car-off" size={48} color="#999" />
-            <Text style={styles.emptyText}>暂无租赁记录</Text>
-            <Text style={styles.emptySubtext}>去地图上找一个车位租用吧!</Text>
+            <Text style={styles.emptyText}>{t('myRentals.emptyTitle')}</Text>
+            <Text style={styles.emptySubtext}>{t('myRentals.emptyMessage')}</Text>
           </View>
         ) : (
           <>
-            <Text style={styles.countText}>共 {myRentals.length} 个租赁中的车位</Text>
+            <Text style={styles.countText}>{t('myRentals.totalRentals', { count: myRentals.length })}</Text>
             
             {myRentals.map((spot) => {
               const remainingTime = getRemainingTime(spot.rent_end_time);
@@ -199,31 +201,31 @@ export default function MyRentalsScreen() {
 
                     <View style={styles.infoRow}>
                       <MaterialCommunityIcons name="cash" size={16} color="#666" />
-                      <Text style={styles.infoText}>{rentPrice} MNT/天</Text>
+                      <Text style={styles.infoText}>{rentPrice} MNT/{t('myRentals.day')}</Text>
                     </View>
 
                     {/* 倒计时 */}
                     <View style={styles.countdownCard}>
                       <MaterialCommunityIcons name="timer" size={20} color="#1890ff" />
                       {remainingTime.expired ? (
-                        <Text style={styles.countdownExpired}>租期已到期</Text>
+                        <Text style={styles.countdownExpired}>{t('myRentals.rentalExpired')}</Text>
                       ) : (
                         <View style={styles.countdownContent}>
-                          <Text style={styles.countdownLabel}>剩余时间:</Text>
+                          <Text style={styles.countdownLabel}>{t('myRentals.remainingTime')}:</Text>
                           <View style={styles.timeBlocks}>
                             {remainingTime.days > 0 && (
                               <View style={styles.timeBlock}>
                                 <Text style={styles.timeValue}>{remainingTime.days}</Text>
-                                <Text style={styles.timeUnit}>天</Text>
+                                <Text style={styles.timeUnit}>{t('myRentals.days')}</Text>
                               </View>
                             )}
                             <View style={styles.timeBlock}>
                               <Text style={styles.timeValue}>{remainingTime.hours}</Text>
-                              <Text style={styles.timeUnit}>时</Text>
+                              <Text style={styles.timeUnit}>{t('myRentals.hours')}</Text>
                             </View>
                             <View style={styles.timeBlock}>
                               <Text style={styles.timeValue}>{remainingTime.minutes}</Text>
-                              <Text style={styles.timeUnit}>分</Text>
+                              <Text style={styles.timeUnit}>{t('myRentals.minutes')}</Text>
                             </View>
                           </View>
                         </View>
@@ -234,7 +236,7 @@ export default function MyRentalsScreen() {
                     <View style={styles.infoRow}>
                       <MaterialCommunityIcons name="calendar-clock" size={16} color="#666" />
                       <Text style={styles.infoText}>
-                        到期时间: {formatTime(spot.rent_end_time)}
+                        {t('myRentals.endTime')}: {formatTime(spot.rent_end_time)}
                       </Text>
                     </View>
 
@@ -252,7 +254,7 @@ export default function MyRentalsScreen() {
                       ) : (
                         <>
                           <MaterialCommunityIcons name="close-circle" size={18} color="#fff" />
-                          <Text style={styles.terminateButtonText}>退租</Text>
+                          <Text style={styles.terminateButtonText}>{t('myRentals.terminate')}</Text>
                         </>
                       )}
                     </TouchableOpacity>
@@ -264,7 +266,7 @@ export default function MyRentalsScreen() {
         )}
 
         <Text style={styles.note}>
-          💡 数据来自 Mantle Sepolia 链
+          💡 {t('myRentals.dataSource')}
         </Text>
       </View>
     </ScrollView>

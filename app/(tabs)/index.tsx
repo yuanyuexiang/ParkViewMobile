@@ -3,6 +3,7 @@ import { View, StyleSheet, ActivityIndicator, Text, Alert, TouchableOpacity, Vie
 import { WebView } from 'react-native-webview';
 import { useAllParkingSpots } from '@/mobile/hooks/useParkingContractViem';
 import { formatEther } from 'viem';
+import { useLanguage } from '@/mobile/contexts/LanguageContext';
 
 /**
  * 地图总览页面
@@ -12,6 +13,7 @@ export default function MapScreen() {
   const { parkingSpots, isLoading, error, refetch } = useAllParkingSpots();
   const webViewRef = useRef<WebView>(null);
   const [webViewLoaded, setWebViewLoaded] = useState(false);
+  const { t } = useLanguage();
   const [region] = useState({
     latitude: 39.9042, // 北京天安门
     longitude: 116.4074,
@@ -19,9 +21,9 @@ export default function MapScreen() {
 
   useEffect(() => {
     if (error) {
-      Alert.alert('加载失败', `无法获取车位数据: ${error.message}`);
+      Alert.alert(t('common.loadFailed'), `${t('home.loadError')}: ${error.message}`);
     }
-  }, [error]);
+  }, [error, t]);
 
   // 当车位数据加载完成后,发送到 WebView
   useEffect(() => {
@@ -72,7 +74,7 @@ export default function MapScreen() {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#1890ff" />
-        <Text style={styles.loadingText}>正在从 Mantle Sepolia 链上加载车位...</Text>
+        <Text style={styles.loadingText}>{t('home.loading')}</Text>
       </View>
     );
   }
@@ -143,9 +145,9 @@ export default function MapScreen() {
             content += '<div style="padding: 12px;">' +
               '<h3 style="margin: 0 0 8px 0; font-size: 16px; font-weight: bold; color: #333;">' + spot.name + '</h3>' +
               '<p style="margin: 4px 0; font-size: 13px; color: #666;">📍 ' + spot.location + '</p>' +
-              '<p style="margin: 8px 0; font-size: 15px; color: #1890ff; font-weight: 600;">💰 ' + spot.rentPrice + ' MNT/天</p>' +
+              '<p style="margin: 8px 0; font-size: 15px; color: #1890ff; font-weight: 600;">💰 ' + spot.rentPrice + ' MNT/${t('home.day')}</p>' +
               '<p style="margin: 4px 0; font-size: 13px; font-weight: 600; color: ' + (spot.isRented ? '#f5222d' : '#52c41a') + ';">' + 
-              (spot.isRented ? '🔴 已出租' : '🟢 可租用') + '</p>' +
+              (spot.isRented ? '🔴 ${t('home.rented')}' : '🟢 ${t('home.available')}') + '</p>' +
               '</div></div>';
 
             var infoWindow = new AMap.InfoWindow({
@@ -195,10 +197,10 @@ export default function MapScreen() {
       {/* 信息栏 */}
       <View style={styles.infoBar}>
         <Text style={styles.infoText}>
-          📍 链上车位数量: {parkingSpots.length}
+          📍 {t('home.chainSpotCount')}: {parkingSpots.length}
         </Text>
         <TouchableOpacity onPress={refetch} style={styles.refreshButton}>
-          <Text style={styles.refreshText}>🔄 刷新</Text>
+          <Text style={styles.refreshText}>🔄 {t('home.refresh')}</Text>
         </TouchableOpacity>
       </View>
 
@@ -206,10 +208,10 @@ export default function MapScreen() {
       {!isLoading && parkingSpots.length === 0 && (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>
-            📭 链上暂无车位数据
+            📭 {t('home.noSpotsOnChain')}
           </Text>
           <Text style={styles.emptySubtext}>
-            请先创建车位或等待其他用户创建
+            {t('home.noSpotsMessage')}
           </Text>
         </View>
       )}

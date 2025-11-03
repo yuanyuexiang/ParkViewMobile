@@ -5,6 +5,7 @@ import { useMyParkingSpots, useBurnParkingSpot } from '@/mobile/hooks/useParking
 import { useWallet } from '@/mobile/contexts/WalletContext';
 import { formatEther } from 'viem';
 import { useState } from 'react';
+import { useLanguage } from '@/mobile/contexts/LanguageContext';
 
 /**
  * 我的车位页面
@@ -16,6 +17,7 @@ export default function MyParkingScreen() {
   const { parkingSpots, isLoading, refetch } = useMyParkingSpots();
   const { burnParkingSpot, isPending: isDeleting } = useBurnParkingSpot();
   const [deletingSpotId, setDeletingSpotId] = useState<string | null>(null);
+  const { t } = useLanguage();
 
   const handleRefresh = () => {
     refetch();
@@ -23,7 +25,7 @@ export default function MyParkingScreen() {
 
   const handleCreateParking = () => {
     if (!isConnected) {
-      Alert.alert('提示', '请先连接钱包');
+      Alert.alert(t('common.tip'), t('wallet.connectFirst'));
       return;
     }
     router.push({ pathname: '/add-parking' } as any);
@@ -53,21 +55,21 @@ export default function MyParkingScreen() {
     // 检查是否正在被租用
     if (spot.renter !== '0x0000000000000000000000000000000000000000') {
       Alert.alert(
-        '无法删除',
-        '该车位正在被租用中，无法删除。\n\n请等待租期结束后再删除。',
-        [{ text: '知道了' }]
+        t('myParkings.cannotDelete'),
+        t('myParkings.cannotDeleteRented'),
+        [{ text: t('myParkings.understood') }]
       );
       return;
     }
 
     // 确认删除
     Alert.alert(
-      '确认删除',
-      `确定要删除车位 "${spot.name}" 吗？\n\n此操作不可撤销！`,
+      t('myParkings.deleteConfirm'),
+      t('myParkings.deleteMessage', { name: spot.name }),
       [
-        { text: '取消', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: '删除',
+          text: t('myParkings.delete'),
           style: 'destructive',
           onPress: async () => {
             try {
@@ -77,7 +79,7 @@ export default function MyParkingScreen() {
               await burnParkingSpot(spot.id.toString());
               
               console.log('✅ 车位删除成功');
-              Alert.alert('删除成功', '车位已成功删除');
+              Alert.alert(t('myParkings.deleteSuccess'), t('myParkings.deleteSuccessMessage'));
               
               // 刷新列表
               setTimeout(() => {
@@ -86,7 +88,7 @@ export default function MyParkingScreen() {
               }, 1000);
             } catch (error: any) {
               console.error('❌ 删除车位失败:', error);
-              Alert.alert('删除失败', error.message || '删除车位失败，请重试');
+              Alert.alert(t('myParkings.deleteFailed'), error.message || t('myParkings.deleteFailedMessage'));
               setDeletingSpotId(null);
             }
           }
@@ -104,20 +106,20 @@ export default function MyParkingScreen() {
         }
       >
         <View style={styles.content}>
-          <Text style={styles.title}>我的车位</Text>
+          <Text style={styles.title}>{t('myParkings.title')}</Text>
           
           {!isConnected ? (
             <View style={styles.emptyCard}>
-              <Text style={styles.emptyText}>🔌 请先连接钱包</Text>
+              <Text style={styles.emptyText}>🔌 {t('wallet.connectFirst')}</Text>
               <Text style={styles.emptySubtext}>
-                前往个人中心连接您的钱包
+                {t('myParkings.goToProfileToConnect')}
               </Text>
             </View>
           ) : parkingSpots.length === 0 ? (
             <View style={styles.emptyCard}>
-              <Text style={styles.emptyText}>🏠 暂无车位</Text>
+              <Text style={styles.emptyText}>🏠 {t('myParkings.emptyTitle')}</Text>
               <Text style={styles.emptySubtext}>
-                点击右下角的 + 按钮创建您的第一个车位
+                {t('myParkings.emptyMessage')}
               </Text>
             </View>
           ) : (
@@ -144,10 +146,10 @@ export default function MyParkingScreen() {
                       <Text style={styles.parkingName}>{spot.name}</Text>
                       <Text style={styles.parkingLocation}>📍 {spot.location}</Text>
                       <Text style={styles.parkingPrice}>
-                        💰 {formatEther(spot.rent_price)} MNT/天
+                        💰 {formatEther(spot.rent_price)} MNT/{t('myParkings.day')}
                       </Text>
                       {spot.renter !== '0x0000000000000000000000000000000000000000' && (
-                        <Text style={styles.rentStatus}>🔒 已租出</Text>
+                        <Text style={styles.rentStatus}>🔒 {t('myParkings.rented')}</Text>
                       )}
 
                       {/* 操作按钮 */}
@@ -158,7 +160,7 @@ export default function MyParkingScreen() {
                           disabled={isBeingDeleted}
                         >
                           <MaterialCommunityIcons name="pencil" size={18} color="#fff" />
-                          <Text style={styles.actionButtonText}>编辑</Text>
+                          <Text style={styles.actionButtonText}>{t('myParkings.edit')}</Text>
                         </TouchableOpacity>
 
                         <TouchableOpacity
@@ -172,12 +174,12 @@ export default function MyParkingScreen() {
                         >
                           {isBeingDeleted ? (
                             <>
-                              <Text style={styles.actionButtonText}>删除中...</Text>
+                              <Text style={styles.actionButtonText}>{t('myParkings.deleting')}</Text>
                             </>
                           ) : (
                             <>
                               <MaterialCommunityIcons name="delete" size={18} color="#fff" />
-                              <Text style={styles.actionButtonText}>删除</Text>
+                              <Text style={styles.actionButtonText}>{t('myParkings.delete')}</Text>
                             </>
                           )}
                         </TouchableOpacity>
@@ -190,7 +192,7 @@ export default function MyParkingScreen() {
           )}
           
           <Text style={styles.note}>
-            �💡 此页面显示您创建的所有车位及收益信息
+            💡 {t('myParkings.note')}
           </Text>
         </View>
       </ScrollView>

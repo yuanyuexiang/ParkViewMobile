@@ -16,6 +16,7 @@ import { WagmiConfig } from 'wagmi';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { WalletProvider } from '@/mobile/contexts/WalletContext';
+import { LanguageProvider } from '@/mobile/contexts/LanguageContext';
 import { wagmiConfig } from '@/mobile/config/wagmiConfig';
 
 const queryClient = new QueryClient();
@@ -23,36 +24,59 @@ const queryClient = new QueryClient();
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
-      <WagmiConfig config={wagmiConfig}>
-        <QueryClientProvider client={queryClient}>
-          <WalletProvider>
-            <StatusBar style="auto" />
-            <Stack
-              screenOptions={{
-                headerStyle: {
-                  backgroundColor: '#1890ff',
-                },
-                headerTintColor: '#fff',
-                headerTitleStyle: {
-                  fontWeight: 'bold',
-                },
-              }}
-            >
-              <Stack.Screen
-                name="(tabs)"
-                options={{ headerShown: false }}
-              />
-              <Stack.Screen
-                name="add-parking"
-                options={{
-                  title: '创建车位',
-                  presentation: 'modal'
+      <LanguageProvider>
+        <WagmiConfig config={wagmiConfig}>
+          <QueryClientProvider client={queryClient}>
+            <WalletProvider>
+              <StatusBar style="auto" />
+              <Stack
+                screenOptions={{
+                  headerStyle: {
+                    backgroundColor: '#1890ff',
+                  },
+                  headerTintColor: '#fff',
+                  headerTitleStyle: {
+                    fontWeight: 'bold',
+                  },
                 }}
-              />
-            </Stack>
-          </WalletProvider>
-        </QueryClientProvider>
-      </WagmiConfig>
+              >
+                <Stack.Screen
+                  name="(tabs)"
+                  options={{ headerShown: false }}
+                />
+                <Stack.Screen
+                  name="add-parking"
+                  options={{
+                    title: 'Add Parking',
+                    presentation: 'modal'
+                  }}
+                />
+                <Stack.Screen
+                  name="edit-parking"
+                  options={{
+                    title: 'Edit Parking',
+                    presentation: 'modal'
+                  }}
+                />
+                <Stack.Screen
+                  name="rent-parking"
+                  options={{
+                    title: 'Rent Parking',
+                    presentation: 'modal'
+                  }}
+                />
+                <Stack.Screen
+                  name="settings"
+                  options={{
+                    title: 'Settings',
+                    presentation: 'modal'
+                  }}
+                />
+              </Stack>
+            </WalletProvider>
+          </QueryClientProvider>
+        </WagmiConfig>
+      </LanguageProvider>
     </SafeAreaProvider>
   );
 }

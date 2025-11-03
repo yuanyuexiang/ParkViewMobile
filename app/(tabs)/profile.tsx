@@ -1,9 +1,11 @@
 import { View, StyleSheet, ScrollView, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useWallet } from '@/mobile/contexts/WalletContext';
+import { useLanguage } from '@/mobile/contexts/LanguageContext';
+import { useRouter } from 'expo-router';
 
 /**
- * 个人中心页面 - 简化版
+ * 个人中心页面
  */
 export default function ProfileScreen() {
   const {
@@ -16,6 +18,8 @@ export default function ProfileScreen() {
     disconnect,
     chainId,
   } = useWallet();
+  const { t } = useLanguage();
+  const router = useRouter();
 
   const formattedAddress = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : '';
   const formattedBalance = balance ? parseFloat(balance).toFixed(4) : null;
@@ -36,8 +40,8 @@ export default function ProfileScreen() {
         {!isConnected ? (
           <>
             <MaterialCommunityIcons name="wallet-outline" size={64} color="#999" />
-            <Text style={styles.walletTitle}>未连接钱包</Text>
-            <Text style={styles.walletSubtitle}>连接钱包以开始使用</Text>
+            <Text style={styles.walletTitle}>{t('wallet.notConnected')}</Text>
+            <Text style={styles.walletSubtitle}>{t('wallet.connectPrompt')}</Text>
             
             <TouchableOpacity
               style={[
@@ -50,26 +54,26 @@ export default function ProfileScreen() {
               {!isInitialized ? (
                 <>
                   <ActivityIndicator color="#fff" size="small" />
-                  <Text style={styles.connectButtonText}>初始化中...</Text>
+                  <Text style={styles.connectButtonText}>{t('wallet.initializing')}</Text>
                 </>
               ) : isConnecting ? (
                 <>
                   <ActivityIndicator color="#fff" size="small" />
-                  <Text style={styles.connectButtonText}>连接中...</Text>
+                  <Text style={styles.connectButtonText}>{t('wallet.connecting')}</Text>
                 </>
               ) : (
-                <Text style={styles.connectButtonText}>连接 MetaMask</Text>
+                <Text style={styles.connectButtonText}>{t('wallet.connectMetaMask')}</Text>
               )}
             </TouchableOpacity>
 
             <Text style={styles.helpText}>
-              📱 确保已安装 MetaMask 移动端
+              {t('wallet.ensureMetaMask')}
             </Text>
           </>
         ) : (
           <>
             <View style={styles.connectedBadge}>
-              <Text style={styles.connectedText}>已连接</Text>
+              <Text style={styles.connectedText}>{t('wallet.connected')}</Text>
             </View>
 
             <Text style={styles.address}>{formattedAddress}</Text>
@@ -86,7 +90,7 @@ export default function ProfileScreen() {
               style={styles.disconnectButton}
               onPress={disconnect}
             >
-              <Text style={styles.disconnectButtonText}>断开连接</Text>
+              <Text style={styles.disconnectButtonText}>{t('wallet.disconnect')}</Text>
             </TouchableOpacity>
           </>
         )}
@@ -94,23 +98,32 @@ export default function ProfileScreen() {
 
       {/* 功能菜单 */}
       <View style={styles.menuSection}>
-        <Text style={styles.sectionTitle}>设置</Text>
+        <Text style={styles.sectionTitle}>{t('profile.settings')}</Text>
         
-        <TouchableOpacity style={styles.menuItem}>
-          <MaterialCommunityIcons name="cog" size={24} color="#666" />
-          <Text style={styles.menuTitle}>通用设置</Text>
+        <TouchableOpacity 
+          style={styles.menuItem}
+          onPress={() => router.push('/settings')}
+        >
+          <MaterialCommunityIcons name="cog" size={24} color="#007AFF" />
+          <Text style={styles.menuTitle}>{t('profile.general')}</Text>
           <MaterialCommunityIcons name="chevron-right" size={24} color="#999" />
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.menuItem}>
-          <MaterialCommunityIcons name="shield-check" size={24} color="#666" />
-          <Text style={styles.menuTitle}>安全与隐私</Text>
+        <TouchableOpacity 
+          style={styles.menuItem}
+          onPress={() => router.push('/settings')}
+        >
+          <MaterialCommunityIcons name="shield-check" size={24} color="#007AFF" />
+          <Text style={styles.menuTitle}>{t('profile.security')}</Text>
           <MaterialCommunityIcons name="chevron-right" size={24} color="#999" />
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.menuItem}>
-          <MaterialCommunityIcons name="help-circle" size={24} color="#666" />
-          <Text style={styles.menuTitle}>帮助与支持</Text>
+        <TouchableOpacity 
+          style={styles.menuItem}
+          onPress={() => router.push('/settings')}
+        >
+          <MaterialCommunityIcons name="help-circle" size={24} color="#007AFF" />
+          <Text style={styles.menuTitle}>{t('profile.help')}</Text>
           <MaterialCommunityIcons name="chevron-right" size={24} color="#999" />
         </TouchableOpacity>
       </View>

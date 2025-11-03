@@ -1,7 +1,10 @@
 import { Tabs } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useLanguage } from '@/mobile/contexts/LanguageContext';
 
 export default function TabsLayout() {
+  const { t } = useLanguage();
+
   return (
     <Tabs
       screenOptions={{
@@ -24,7 +27,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: '地图总览',
+          title: t('tabs.home'),
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="map-marker" size={size} color={color} />
           ),
@@ -33,7 +36,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="my-rentals"
         options={{
-          title: '我的租赁',
+          title: t('tabs.myRentals'),
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="car-key" size={size} color={color} />
           ),
@@ -42,7 +45,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="my-parking"
         options={{
-          title: '我的车位',
+          title: t('tabs.myParkings'),
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="garage" size={size} color={color} />
           ),
@@ -51,7 +54,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: '个人中心',
+          title: t('tabs.profile'),
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="account" size={size} color={color} />
           ),

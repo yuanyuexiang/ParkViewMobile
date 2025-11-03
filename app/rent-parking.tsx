@@ -14,14 +14,15 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useWallet } from '@/mobile/contexts/WalletContext';
 import { useRentParkingSpot } from '@/mobile/hooks/useParkingContractViem';
 import { formatEther, parseEther } from 'viem';
+import { useLanguage } from '@/mobile/contexts/LanguageContext';
 
 // 预设租用时长选项
-const DURATION_OPTIONS = [
-  { label: '1天', days: 1, popular: false },
-  { label: '3天', days: 3, popular: true },
-  { label: '7天', days: 7, popular: true },
-  { label: '15天', days: 15, popular: false },
-  { label: '30天', days: 30, popular: true },
+const getDurationOptions = (t: (key: string) => string) => [
+  { label: t('rentParking.duration1Day'), days: 1, popular: false },
+  { label: t('rentParking.duration3Days'), days: 3, popular: true },
+  { label: t('rentParking.duration7Days'), days: 7, popular: true },
+  { label: t('rentParking.duration15Days'), days: 15, popular: false },
+  { label: t('rentParking.duration30Days'), days: 30, popular: true },
 ];
 
 export default function RentParkingScreen() {
@@ -29,6 +30,7 @@ export default function RentParkingScreen() {
   const params = useLocalSearchParams();
   const { isConnected, address } = useWallet();
   const { rentParkingSpot, isPending } = useRentParkingSpot();
+  const { t } = useLanguage();
 
   // 从路由参数获取车位信息
   const spotId = params.id as string;
@@ -42,6 +44,8 @@ export default function RentParkingScreen() {
 
   const [selectedDuration, setSelectedDuration] = useState(3); // 默认3天
   const [totalCost, setTotalCost] = useState('0');
+  
+  const DURATION_OPTIONS = getDurationOptions(t);
 
   // 计算总费用
   useEffect(() => {
@@ -54,22 +58,22 @@ export default function RentParkingScreen() {
   // 处理租用
   const handleRent = async () => {
     if (!isConnected) {
-      Alert.alert('提示', '请先连接钱包');
+      Alert.alert(t('common.tip'), t('wallet.connectFirst'));
       return;
     }
 
     if (address?.toLowerCase() === spotOwner?.toLowerCase()) {
-      Alert.alert('提示', '您不能租用自己的车位');
+      Alert.alert(t('common.tip'), t('rentParking.cannotRentOwn'));
       return;
     }
 
     Alert.alert(
-      '确认租用',
-      `车位: ${spotName}\n租期: ${selectedDuration} 天\n总费用: ${totalCost} MNT\n\n确定要租用吗?`,
+      t('rentParking.confirmRent'),
+      `${t('rentParking.spotLabel')}: ${spotName}\n${t('rentParking.durationLabel')}: ${selectedDuration} ${t('rentParking.days')}\n${t('rentParking.totalCost')}: ${totalCost} MNT\n\n${t('rentParking.confirmRentMessage')}`,
       [
-        { text: '取消', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: '确定租用',
+          text: t('rentParking.confirmRentButton'),
           onPress: async () => {
             try {
               console.log('🚀 开始租用车位...');
@@ -93,7 +97,7 @@ export default function RentParkingScreen() {
               router.replace('/(tabs)/my-rentals' as any);
             } catch (error: any) {
               console.error('❌ 租用失败:', error);
-              Alert.alert('租用失败', error.message || '无法完成租用，请重试');
+              Alert.alert(t('rentParking.rentFailed'), error.message || t('rentParking.rentFailedMessage'));
             }
           },
         },
@@ -108,7 +112,7 @@ export default function RentParkingScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <MaterialCommunityIcons name="arrow-left" size={24} color="#333" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>租用车位</Text>
+        <Text style={styles.headerTitle}>{t('rentParking.title')}</Text>
         <View style={{ width: 24 }} />
       </View>
 
@@ -142,10 +146,10 @@ export default function RentParkingScreen() {
           <View style={styles.priceCard}>
             <MaterialCommunityIcons name="cash" size={24} color="#2196F3" />
             <View style={styles.priceInfo}>
-              <Text style={styles.priceLabel}>每天租金</Text>
+              <Text style={styles.priceLabel}>{t('rentParking.dailyRent')}</Text>
               <Text style={styles.priceValue}>{spotRentPrice} MNT</Text>
               <Text style={styles.priceSubtext}>
-                ≈ ¥{(parseFloat(spotRentPrice || '0') * 6.5).toFixed(2)}
+                {t('rentParking.cnyEquivalent', { amount: (parseFloat(spotRentPrice || '0') * 6.5).toFixed(2) })}
               </Text>
             </View>
           </View>
@@ -154,7 +158,7 @@ export default function RentParkingScreen() {
 
       {/* 选择租期 */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>选择租期</Text>
+        <Text style={styles.sectionTitle}>{t('rentParking.selectDuration')}</Text>
         
         <View style={styles.durationGrid}>
           {DURATION_OPTIONS.map((option) => (
@@ -168,7 +172,7 @@ export default function RentParkingScreen() {
             >
               {option.popular && (
                 <View style={styles.popularBadge}>
-                  <Text style={styles.popularText}>热门</Text>
+                  <Text style={styles.popularText}>{t('rentParking.popular')}</Text>
                 </View>
               )}
               <Text
@@ -186,27 +190,27 @@ export default function RentParkingScreen() {
 
       {/* 费用明细 */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>费用明细</Text>
+        <Text style={styles.sectionTitle}>{t('rentParking.costDetails')}</Text>
         
         <View style={styles.costCard}>
           <View style={styles.costRow}>
-            <Text style={styles.costLabel}>单价</Text>
-            <Text style={styles.costValue}>{spotRentPrice} MNT/天</Text>
+            <Text style={styles.costLabel}>{t('rentParking.unitPrice')}</Text>
+            <Text style={styles.costValue}>{spotRentPrice} MNT/{t('rentParking.day')}</Text>
           </View>
           
           <View style={styles.costRow}>
-            <Text style={styles.costLabel}>租期</Text>
-            <Text style={styles.costValue}>{selectedDuration} 天</Text>
+            <Text style={styles.costLabel}>{t('rentParking.durationLabel')}</Text>
+            <Text style={styles.costValue}>{selectedDuration} {t('rentParking.days')}</Text>
           </View>
           
           <View style={styles.divider} />
           
           <View style={styles.costRow}>
-            <Text style={styles.totalLabel}>总费用</Text>
+            <Text style={styles.totalLabel}>{t('rentParking.totalCost')}</Text>
             <View style={styles.totalValue}>
               <Text style={styles.totalAmount}>{totalCost} MNT</Text>
               <Text style={styles.totalSubtext}>
-                ≈ ¥{(parseFloat(totalCost) * 6.5).toFixed(2)}
+                {t('rentParking.cnyEquivalent', { amount: (parseFloat(totalCost) * 6.5).toFixed(2) })}
               </Text>
             </View>
           </View>
@@ -218,11 +222,11 @@ export default function RentParkingScreen() {
         <View style={styles.tipBox}>
           <MaterialCommunityIcons name="information" size={20} color="#1890ff" />
           <View style={styles.tipContent}>
-            <Text style={styles.tipTitle}>租用说明</Text>
-            <Text style={styles.tipText}>• 租金将直接支付给车位拥有者</Text>
-            <Text style={styles.tipText}>• 租期到期后自动解除租用关系</Text>
-            <Text style={styles.tipText}>• 可以提前退租，但不退还租金</Text>
-            <Text style={styles.tipText}>• 需要支付少量 Gas 费用</Text>
+            <Text style={styles.tipTitle}>{t('rentParking.rentalInfo')}</Text>
+            <Text style={styles.tipText}>• {t('rentParking.tip1')}</Text>
+            <Text style={styles.tipText}>• {t('rentParking.tip2')}</Text>
+            <Text style={styles.tipText}>• {t('rentParking.tip3')}</Text>
+            <Text style={styles.tipText}>• {t('rentParking.tip4')}</Text>
           </View>
         </View>
       </View>
@@ -240,13 +244,13 @@ export default function RentParkingScreen() {
           {isPending ? (
             <>
               <ActivityIndicator color="#fff" size="small" />
-              <Text style={styles.rentButtonText}>租用中...</Text>
+              <Text style={styles.rentButtonText}>{t('rentParking.renting')}</Text>
             </>
           ) : (
             <>
               <MaterialCommunityIcons name="check-circle" size={24} color="#fff" />
               <Text style={styles.rentButtonText}>
-                {isConnected ? `确认租用 ${totalCost} MNT` : '请先连接钱包'}
+                {isConnected ? `${t('rentParking.confirmRentButton')} ${totalCost} MNT` : t('wallet.connectFirst')}
               </Text>
             </>
           )}
@@ -257,7 +261,7 @@ export default function RentParkingScreen() {
           onPress={() => router.back()}
           disabled={isPending}
         >
-          <Text style={styles.cancelButtonText}>取消</Text>
+          <Text style={styles.cancelButtonText}>{t('common.cancel')}</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>
