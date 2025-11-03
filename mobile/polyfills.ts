@@ -4,9 +4,20 @@
  */
 
 // ========================================
-// 1. 加密随机数生成器 (CRITICAL - 必须第一个!)
+// 0. Buffer MUST BE FIRST! (最优先!)
 // ========================================
-// 强制导入,确保在所有地方都可用
+import { Buffer } from 'buffer';
+// @ts-ignore
+global.Buffer = Buffer;
+// @ts-ignore
+if (typeof window !== 'undefined') {
+  // @ts-ignore
+  window.Buffer = Buffer;
+}
+
+// ========================================
+// 1. 加密随机数生成器 (紧接着 Buffer!)
+// ========================================
 import 'react-native-get-random-values';
 
 // 验证是否成功
@@ -18,7 +29,35 @@ if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function
 }
 
 // ========================================
-// 2. WalletConnect 需要的 DOM API polyfills
+// 2. Node.js Core Polyfills
+// ========================================
+// Process polyfill
+import process from 'process';
+// @ts-ignore
+global.process = process;
+
+// Stream polyfill
+import { Duplex, Readable, Writable, Transform, PassThrough } from 'readable-stream';
+// @ts-ignore
+global.stream = { Duplex, Readable, Writable, Transform, PassThrough };
+
+// Events polyfill
+import EventEmitter from 'events';
+// @ts-ignore
+global.EventEmitter = EventEmitter;
+
+// Http/Https/Net/TLS - 创建空对象避免错误（React Native 不需要真实的网络模块）
+// @ts-ignore
+global.http = {};
+// @ts-ignore  
+global.https = {};
+// @ts-ignore
+global.net = {};
+// @ts-ignore  
+global.tls = {};
+
+// ========================================
+// 3. WalletConnect 需要的 DOM API polyfills
 // ========================================
 
 // 定义全局 window 对象(如果不存在)

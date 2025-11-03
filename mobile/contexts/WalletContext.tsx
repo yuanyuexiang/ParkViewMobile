@@ -1,145 +1,225 @@
-import React, { createContext, useState, useContext, useCallback, useEffect, useMemo } from 'react';
-import { Alert, AppState } from 'react-native';
-// @ts-ignore - Web3Modal 1.x types compatibility
-import { useWeb3Modal } from '@web3modal/wagmi-react-native';
-// @ts-ignore - wagmi 1.x types compatibility
-import { useAccount, useBalance, useDisconnect, useSwitchNetwork, useNetwork } from 'wagmi';
+/**
+ * WalletConnect 钱包上下文 - 纯 SignClient 实现
+ * 不依赖 Web3Modal,使用自定义 UI
+ */
+
+import React, { createContext, useState, useContext, useCallback, useEffect } from 'react';
+import { Alert, Linking, AppState } from 'react-native';
+import SignClient from '@walletconnect/sign-client';
+import type { SessionTypes } from '@walletconnect/types';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { formatEther } from 'viem';
+import { publicClient } from '../config/wagmi';
 
-import { APPKIT_NETWORKS } from '../config/appkit';
-
+const PROJECT_ID = '9f5e5740b1d939c695c50b1111a7d90d';
 const MANTLE_SEPOLIA_CHAIN_ID = 5003;
-const DEMO_ADDRESS = '0x1234567890123456789012345678901234567890';
 
 interface WalletContextType {
   address: string | null;
-  isConnected: boolean;
-  isConnecting: boolean;
   chainId: number;
   balance: string | null;
-  walletName: string | null;
-  isDemoMode: boolean;
+  isConnected: boolean;
+  isConnecting: boolean;
   connect: () => Promise<void>;
-  disconnect: () => void;
-  switchChain: (chainId: number) => Promise<void>;
-  useDemoMode: () => void;
+  disconnect: () => Promise<void>;
+  switchNetwork: (chainId: number) => Promise<void>;
 }
 
 const WalletContext = createContext<WalletContextType | null>(null);
 
 export function WalletProvider({ children }: { children: React.ReactNode }) {
-  const { open } = useWeb3Modal();
-  const { address: connectedAddress, isConnected: wagmiConnected, connector } = useAccount();
-  const { chain } = useNetwork();
-  const activeChainId = chain?.id;
-  const { disconnect: wagmiDisconnect } = useDisconnect();
-  const { switchNetwork: wagmiSwitchNetwork } = useSwitchNetwork();
-  const { data: balanceData } = useBalance({
-    address: connectedAddress
-  });
-
-  const [walletName, setWalletName] = useState<string | null>(null);
-  const [isDemoMode, setIsDemoMode] = useState(false);
-  const [demoAddress, setDemoAddress] = useState<string | null>(null);
+  const [address, setAddress] = useState<string | null>(null);
+  const [chainId, setChainId] = useState<number>(MANTLE_SEPOLIA_CHAIN_ID);
+  const [balance, setBalance] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [signClient, setSignClient] = useState<SignClient | null>(null);
+  const [session, setSession] = useState<SessionTypes.Struct | null>(null);
 
-  const effectiveAddress = isDemoMode ? demoAddress : connectedAddress ?? null;
-  const effectiveChainId = useMemo(() => {
-    if (isDemoMode) return MANTLE_SEPOLIA_CHAIN_ID;
-    if (typeof activeChainId === 'number') return activeChainId;
-    if (typeof activeChainId === 'string') return Number(activeChainId);
-    return MANTLE_SEPOLIA_CHAIN_ID;
-  }, [activeChainId, isDemoMode]);
-
-  const balance = balanceData ? formatEther(balanceData.value) : null;
-  const isConnected = !!effectiveAddress && !isDemoMode && wagmiConnected;
-
-  // 更新 connector 名称
+  // 初始化 SignClient
   useEffect(() => {
-    if (isDemoMode) {
-      setWalletName('演示钱包');
-      setDemoAddress(prev => prev ?? DEMO_ADDRESS);
+    const init = async () => {
+      try {
+        const client = await SignClient.init({
+          projectId: PROJECT_ID,
+          metadata: {
+            name: 'ParkView',
+            description: '去中心化停车位租赁平台',
+            url: 'https://parkview.app',
+            icons: ['https://parkview.app/icon.png'],
+          },
+          storage: AsyncStorage as any,
+        });
+        
+        setSignClient(client);
+        console.log('✅ WalletConnect SignClient initialized');
+
+        // 恢复之前的会话
+        const sessions = client.session.getAll();
+        if (sessions.length > 0) {
+          const lastSession = sessions[sessions.length - 1];
+          setSession(lastSession);
+          const addr = lastSession.namespaces.eip155.accounts[0].split(':')[2];
+          setAddress(addr);
+          console.log('✅ Restored session:', addr);
+        }
+      } catch (error) {
+        console.error('Failed to init SignClient:', error);
+      }
+    };
+
+    init();
+  }, []);
+
+  // 获取余额
+  const fetchBalance = useCallback(async (addr: string) => {
+    try {
+      const bal = await publicClient.getBalance({
+        address: addr as `0x${string}`,
+      });
+      setBalance(formatEther(bal));
+    } catch (error) {
+      console.error('Failed to fetch balance:', error);
+      setBalance('0');
+    }
+  }, []);
+
+  // 监听地址变化获取余额
+  useEffect(() => {
+    if (address) {
+      fetchBalance(address);
+    }
+  }, [address, fetchBalance]);
+
+  // 连接钱包
+  const connect = useCallback(async () => {
+    if (!signClient) {
+      Alert.alert('错误', 'WalletConnect 未初始化');
       return;
     }
 
-    if (connector?.name) {
-      setWalletName(connector.name);
-    } else {
-      setWalletName(null);
-    }
-  }, [connector, isDemoMode]);
-
-  const connect = useCallback(async () => {
-    setIsDemoMode(false);
-    setDemoAddress(null);
-    setWalletName(null);
-    setIsConnecting(true);
     try {
-      await open();
-    } catch (error) {
-      console.error('❌ Web3Modal connect error:', error);
-      Alert.alert('连接失败', '无法打开钱包连接界面,请重试');
+      setIsConnecting(true);
+
+      const { uri, approval } = await signClient.connect({
+        requiredNamespaces: {
+          eip155: {
+            chains: [`eip155:${MANTLE_SEPOLIA_CHAIN_ID}`],
+            methods: [
+              'eth_sendTransaction',
+              'eth_signTransaction',
+              'eth_sign',
+              'personal_sign',
+              'eth_signTypedData',
+              'eth_signTypedData_v4',
+            ],
+            events: ['chainChanged', 'accountsChanged'],
+          },
+        },
+      });
+
+      if (uri) {
+        // 打开 MetaMask
+        const wcUri = `metamask://wc?uri=${encodeURIComponent(uri)}`;
+        const canOpen = await Linking.canOpenURL(wcUri);
+        
+        if (canOpen) {
+          await Linking.openURL(wcUri);
+        } else {
+          Alert.alert(
+            '打开 MetaMask',
+            `请在 MetaMask 中扫描二维码:\n\n${uri}`,
+            [
+              { text: '取消', style: 'cancel' },
+              { text: '复制 URI', onPress: () => {
+                // 这里可以复制到剪贴板
+                console.log('WC URI:', uri);
+              }},
+            ]
+          );
+        }
+      }
+
+      // 等待批准
+      const newSession = await approval();
+      setSession(newSession);
+
+      const addr = newSession.namespaces.eip155.accounts[0].split(':')[2];
+      setAddress(addr);
+
+      Alert.alert('连接成功', `已连接到 ${addr.slice(0, 6)}...${addr.slice(-4)}`);
+    } catch (error: any) {
+      console.error('Connection error:', error);
+      if (error.message?.includes('User rejected')) {
+        Alert.alert('连接取消', '用户拒绝了连接请求');
+      } else {
+        Alert.alert('连接失败', error.message || '无法连接钱包');
+      }
     } finally {
       setIsConnecting(false);
     }
-  }, [open]);
+  }, [signClient]);
 
-  const useDemoMode = useCallback(() => {
-    setIsDemoMode(true);
-    setDemoAddress(DEMO_ADDRESS);
-  }, []);
-
+  // 断开连接
   const disconnect = useCallback(async () => {
-    setIsDemoMode(false);
-    setDemoAddress(null);
-    setWalletName(null);
+    if (!signClient || !session) return;
+
     try {
-      wagmiDisconnect();
+      await signClient.disconnect({
+        topic: session.topic,
+        reason: {
+          code: 6000,
+          message: 'User disconnected',
+        },
+      });
+
+      setSession(null);
+      setAddress(null);
+      setBalance(null);
+
+      Alert.alert('已断开', '钱包已断开连接');
     } catch (error) {
-      console.error('❌ Wagmi disconnect error:', error);
+      console.error('Disconnect error:', error);
     }
-  }, [wagmiDisconnect]);
+  }, [signClient, session]);
 
-  const switchChain = useCallback(
-    async (targetChainId: number) => {
-      if (isDemoMode) {
-        Alert.alert('演示模式', '演示模式无法切换网络,请连接真实钱包');
-        return;
-      }
+  // 切换网络
+  const switchNetwork = useCallback(async (newChainId: number) => {
+    if (!signClient || !session) {
+      Alert.alert('错误', '请先连接钱包');
+      return;
+    }
 
-      const target = APPKIT_NETWORKS.find(network => Number(network.id) === targetChainId);
-      if (!target) {
-        Alert.alert('提示', '暂不支持该网络');
-        return;
-      }
+    try {
+      await signClient.request({
+        topic: session.topic,
+        chainId: `eip155:${newChainId}`,
+        request: {
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: `0x${newChainId.toString(16)}` }],
+        },
+      });
 
-      try {
-        wagmiSwitchNetwork?.(targetChainId);
-      } catch (error: any) {
-        console.error('❌ 切换网络失败:', error);
-        const message = error?.message ?? '切换网络失败,请在钱包中手动选择 Mantle Sepolia';
-        Alert.alert('切换失败', message);
-      }
-    },
-    [isDemoMode, wagmiSwitchNetwork]
-  );
+      setChainId(newChainId);
+      Alert.alert('网络切换成功', `已切换到链 ID: ${newChainId}`);
+    } catch (error: any) {
+      console.error('Switch network error:', error);
+      Alert.alert('切换失败', error.message || '无法切换网络');
+    }
+  }, [signClient, session]);
+
+  const value: WalletContextType = {
+    address,
+    chainId,
+    balance,
+    isConnected: !!address,
+    isConnecting,
+    connect,
+    disconnect,
+    switchNetwork,
+  };
 
   return (
-    <WalletContext.Provider
-      value={{
-        address: effectiveAddress,
-        isConnected,
-        isConnecting,
-        chainId: effectiveChainId,
-        balance,
-        walletName,
-        isDemoMode,
-        connect,
-        disconnect,
-        switchChain,
-        useDemoMode
-      }}
-    >
+    <WalletContext.Provider value={value}>
       {children}
     </WalletContext.Provider>
   );
@@ -147,6 +227,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
 export function useWallet() {
   const context = useContext(WalletContext);
-  if (!context) throw new Error('useWallet must be used within WalletProvider');
+  if (!context) {
+    throw new Error('useWallet must be used within WalletProvider');
+  }
   return context;
 }

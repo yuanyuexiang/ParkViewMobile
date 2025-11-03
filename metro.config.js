@@ -5,31 +5,34 @@ const path = require('path');
 const config = getDefaultConfig(__dirname);
 
 // 配置额外的文件扩展名
-config.resolver.sourceExts = [...config.resolver.sourceExts, 'mjs', 'cjs'];
+config.resolver.sourceExts = ['js', 'jsx', 'json', 'ts', 'tsx', 'mjs', 'cjs'];
 
-// 移除 resolverMainFields,使用默认的解析逻辑
-// config.resolver.resolverMainFields = ['main', 'module'];
+// 🔧 让 Metro 能够解析目录导入（自动查找 index.js）
+config.resolver.resolverMainFields = ['react-native', 'browser', 'main'];
 
-// 自定义解析器,处理目录导入
-config.resolver.resolveRequest = (context, moduleName, platform) => {
-  // 对于 @web3modal/ui-react-native 的目录导入,手动添加 /index
-  if (moduleName.startsWith('./layout/') && 
-      context.originModulePath.includes('@web3modal/ui-react-native')) {
-    const indexPath = moduleName + '/index';
-    try {
-      return context.resolveRequest(context, indexPath, platform);
-    } catch (e) {
-      // 如果失败,回退到默认解析
-    }
-  }
-  
-  // 默认解析
-  return context.resolveRequest(context, moduleName, platform);
-};
+// 配置 platformize extensions
+config.resolver.platforms = ['ios', 'android'];
 
 // 配置别名
 config.resolver.extraNodeModules = {
   '@': __dirname,
+  'crypto': require.resolve('crypto-browserify'),
+  'stream': require.resolve('readable-stream'),
+  'buffer': require.resolve('buffer'),
+  'events': require.resolve('events'),
+  'process': require.resolve('process'),
+  'path': require.resolve('path-browserify'),
+  'url': require.resolve('url'),
+  'util': require.resolve('util'),
+  'assert': require.resolve('assert'),
+  'os': require.resolve('os'),
+  'querystring': require.resolve('querystring'),
+  'http': require.resolve('stream-http'),
+  'https': require.resolve('https-browserify'),
+  'net': require.resolve('react-native-tcp-socket'),
+  'tls': require.resolve('react-native-tcp-socket'),
+  'zlib': require.resolve('browserify-zlib'),
+  'fs': path.resolve(__dirname, 'mobile/polyfills/fs-mock.js'),
 };
 
 // 排除不需要打包的文件和目录
@@ -45,5 +48,6 @@ config.watchFolders = [
 ];
 
 module.exports = config;
+
 
 
