@@ -7,9 +7,9 @@ import React, { createContext, useState, useContext, useCallback, useEffect } fr
 import { Alert, Linking, AppState } from 'react-native';
 import SignClient from '@walletconnect/sign-client';
 import type { SessionTypes } from '@walletconnect/types';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { formatEther } from 'viem';
 import { publicClient } from '../config/wagmi';
+import { walletConnectStorage } from '../utils/walletConnectStorage';
 
 const PROJECT_ID = '9f5e5740b1d939c695c50b1111a7d90d';
 const MANTLE_SEPOLIA_CHAIN_ID = 5003;
@@ -20,6 +20,7 @@ interface WalletContextType {
   balance: string | null;
   isConnected: boolean;
   isConnecting: boolean;
+  isInitialized: boolean;
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
   switchNetwork: (chainId: number) => Promise<void>;
@@ -32,6 +33,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [chainId, setChainId] = useState<number>(MANTLE_SEPOLIA_CHAIN_ID);
   const [balance, setBalance] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
   const [signClient, setSignClient] = useState<SignClient | null>(null);
   const [session, setSession] = useState<SessionTypes.Struct | null>(null);
 
@@ -39,6 +41,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const init = async () => {
       try {
+        console.log('🔄 Initializing WalletConnect SignClient...');
+        
         const client = await SignClient.init({
           projectId: PROJECT_ID,
           metadata: {
@@ -47,23 +51,56 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
             url: 'https://parkview.app',
             icons: ['https://parkview.app/icon.png'],
           },
-          storage: AsyncStorage as any,
+          storage: walletConnectStorage as any,
         });
         
         setSignClient(client);
+        setIsInitialized(true);
         console.log('✅ WalletConnect SignClient initialized');
 
-        // 恢复之前的会话
-        const sessions = client.session.getAll();
-        if (sessions.length > 0) {
-          const lastSession = sessions[sessions.length - 1];
-          setSession(lastSession);
-          const addr = lastSession.namespaces.eip155.accounts[0].split(':')[2];
-          setAddress(addr);
-          console.log('✅ Restored session:', addr);
+        // 恢复之前的会话（如果有）
+        try {
+          const sessions = client.session.getAll();
+          if (sessions.length > 0) {
+            const lastSession = sessions[sessions.length - 1];
+            setSession(lastSession);
+            const addr = lastSession.namespaces.eip155.accounts[0].split(':')[2];
+            setAddress(addr);
+            console.log('✅ Restored session:', addr);
+          }
+        } catch (sessionError) {
+          console.log('⚠️ No session to restore:', sessionError);
         }
       } catch (error) {
-        console.error('Failed to init SignClient:', error);
+        console.error('❌ Failed to init SignClient:', error);
+        
+        // 如果初始化失败，尝试清除损坏的数据并重试
+        try {
+          console.log('🗑️ Clearing corrupted WalletConnect data and retrying...');
+          const keys = await walletConnectStorage.getKeys();
+          for (const key of keys) {
+            await walletConnectStorage.removeItem(key);
+          }
+          
+          // 重试初始化
+          const client = await SignClient.init({
+            projectId: PROJECT_ID,
+            metadata: {
+              name: 'ParkView',
+              description: '去中心化停车位租赁平台',
+              url: 'https://parkview.app',
+              icons: ['https://parkview.app/icon.png'],
+            },
+            storage: walletConnectStorage as any,
+          });
+          
+          setSignClient(client);
+          setIsInitialized(true);
+          console.log('✅ WalletConnect SignClient initialized (after retry)');
+        } catch (retryError) {
+          console.error('❌ Failed to init SignClient even after clearing data:', retryError);
+          setIsInitialized(false);
+        }
       }
     };
 
@@ -93,12 +130,13 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   // 连接钱包
   const connect = useCallback(async () => {
     if (!signClient) {
-      Alert.alert('错误', 'WalletConnect 未初始化');
+      Alert.alert('错误', 'WalletConnect 正在初始化，请稍后再试');
       return;
     }
 
     try {
       setIsConnecting(true);
+      console.log('🔄 Starting WalletConnect connection...');
 
       const { uri, approval } = await signClient.connect({
         requiredNamespaces: {
@@ -118,13 +156,16 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       });
 
       if (uri) {
+        console.log('📱 Opening MetaMask with WC URI...');
         // 打开 MetaMask
         const wcUri = `metamask://wc?uri=${encodeURIComponent(uri)}`;
         const canOpen = await Linking.canOpenURL(wcUri);
         
         if (canOpen) {
           await Linking.openURL(wcUri);
+          console.log('✅ MetaMask opened');
         } else {
+          console.log('⚠️ Cannot open MetaMask deep link');
           Alert.alert(
             '打开 MetaMask',
             `请在 MetaMask 中扫描二维码:\n\n${uri}`,
@@ -140,15 +181,17 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       }
 
       // 等待批准
+      console.log('⏳ Waiting for user approval...');
       const newSession = await approval();
       setSession(newSession);
 
       const addr = newSession.namespaces.eip155.accounts[0].split(':')[2];
       setAddress(addr);
 
+      console.log('✅ Connected to:', addr);
       Alert.alert('连接成功', `已连接到 ${addr.slice(0, 6)}...${addr.slice(-4)}`);
     } catch (error: any) {
-      console.error('Connection error:', error);
+      console.error('❌ Connection error:', error);
       if (error.message?.includes('User rejected')) {
         Alert.alert('连接取消', '用户拒绝了连接请求');
       } else {
@@ -213,6 +256,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     balance,
     isConnected: !!address,
     isConnecting,
+    isInitialized,
     connect,
     disconnect,
     switchNetwork,

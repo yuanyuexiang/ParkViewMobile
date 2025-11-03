@@ -20,12 +20,42 @@ if (typeof window !== 'undefined') {
 // ========================================
 import 'react-native-get-random-values';
 
+// 强制确保 crypto.getRandomValues 在所有环境中可用
+// @ts-ignore
+if (typeof global.crypto === 'undefined') {
+  // @ts-ignore
+  global.crypto = {};
+}
+
+// @ts-ignore
+if (typeof global.crypto.getRandomValues === 'undefined') {
+  // react-native-get-random-values 会设置 crypto.getRandomValues
+  // 但有时需要手动桥接到 global
+  // @ts-ignore
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    // @ts-ignore
+    global.crypto.getRandomValues = crypto.getRandomValues.bind(crypto);
+  }
+}
+
+// 确保 window.crypto 也可用（某些库可能检查 window）
+// @ts-ignore
+if (typeof window !== 'undefined') {
+  // @ts-ignore
+  if (typeof window.crypto === 'undefined') {
+    // @ts-ignore
+    window.crypto = global.crypto;
+  }
+}
+
 // 验证是否成功
-if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
-  console.log('✅ crypto.getRandomValues is available in polyfills.ts');
+// @ts-ignore
+if (typeof global.crypto.getRandomValues === 'function') {
+  console.log('✅ crypto.getRandomValues is available globally');
 } else {
-  console.error('❌ CRITICAL: crypto.getRandomValues STILL not available after import!');
-  console.error('This should never happen. Check react-native-get-random-values installation.');
+  console.error('❌ CRITICAL: crypto.getRandomValues not available!');
+  // @ts-ignore
+  console.error('  global.crypto:', global.crypto);
 }
 
 // ========================================

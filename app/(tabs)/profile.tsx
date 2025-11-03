@@ -11,6 +11,7 @@ export default function ProfileScreen() {
     balance,
     isConnected,
     isConnecting,
+    isInitialized,
     connect,
     disconnect,
     chainId,
@@ -39,12 +40,23 @@ export default function ProfileScreen() {
             <Text style={styles.walletSubtitle}>连接钱包以开始使用</Text>
             
             <TouchableOpacity
-              style={styles.connectButton}
+              style={[
+                styles.connectButton,
+                (!isInitialized || isConnecting) && styles.connectButtonDisabled
+              ]}
               onPress={connect}
-              disabled={isConnecting}
+              disabled={!isInitialized || isConnecting}
             >
-              {isConnecting ? (
-                <ActivityIndicator color="#fff" />
+              {!isInitialized ? (
+                <>
+                  <ActivityIndicator color="#fff" size="small" />
+                  <Text style={styles.connectButtonText}>初始化中...</Text>
+                </>
+              ) : isConnecting ? (
+                <>
+                  <ActivityIndicator color="#fff" size="small" />
+                  <Text style={styles.connectButtonText}>连接中...</Text>
+                </>
               ) : (
                 <Text style={styles.connectButtonText}>连接 MetaMask</Text>
               )}
@@ -142,6 +154,13 @@ const styles = StyleSheet.create({
     marginTop: 24,
     minWidth: 200,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  connectButtonDisabled: {
+    backgroundColor: '#999',
+    opacity: 0.6,
   },
   connectButtonText: {
     color: '#fff',
