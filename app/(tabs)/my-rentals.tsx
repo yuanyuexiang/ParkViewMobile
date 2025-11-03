@@ -109,21 +109,21 @@ export default function MyRentalsScreen() {
               const rentPrice = formatEther(spot.rent_price);
               const lat = (Number(spot.latitude) / 1000000).toFixed(6);
               const lng = (Number(spot.longitude) / 1000000).toFixed(6);
+              
+              // 处理图片 URL
+              let pictureUrl = spot.picture;
+              if (pictureUrl === '/tcw.jpg' || !pictureUrl || pictureUrl.startsWith('/')) {
+                pictureUrl = 'https://images.unsplash.com/photo-1506521781263-d8422e82f27a?w=280&h=160&fit=crop';
+              }
 
               return (
                 <View key={spot.id.toString()} style={styles.rentalCard}>
                   {/* 车位图片 */}
-                  {spot.picture ? (
-                    <Image 
-                      source={{ uri: spot.picture }} 
-                      style={styles.rentalImage}
-                      resizeMode="cover"
-                    />
-                  ) : (
-                    <View style={styles.placeholderImage}>
-                      <MaterialCommunityIcons name="parking" size={40} color="#ccc" />
-                    </View>
-                  )}
+                  <Image 
+                    source={{ uri: pictureUrl }} 
+                    style={styles.rentalImage}
+                    resizeMode="cover"
+                  />
                   
                   <View style={styles.cardHeader}>
                     <Text style={styles.spotName}>{spot.name}</Text>

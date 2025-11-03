@@ -53,33 +53,35 @@ export default function MyParkingScreen() {
             </View>
           ) : (
             <>
-              {parkingSpots.map((spot) => (
-                <View key={spot.id.toString()} style={styles.parkingCard}>
-                  {/* 车位图片 */}
-                  {spot.picture ? (
+              {parkingSpots.map((spot) => {
+                // 处理图片 URL
+                let pictureUrl = spot.picture;
+                if (pictureUrl === '/tcw.jpg' || !pictureUrl || pictureUrl.startsWith('/')) {
+                  pictureUrl = 'https://images.unsplash.com/photo-1506521781263-d8422e82f27a?w=280&h=160&fit=crop';
+                }
+                
+                return (
+                  <View key={spot.id.toString()} style={styles.parkingCard}>
+                    {/* 车位图片 */}
                     <Image 
-                      source={{ uri: spot.picture }} 
+                      source={{ uri: pictureUrl }} 
                       style={styles.parkingImage}
                       resizeMode="cover"
                     />
-                  ) : (
-                    <View style={styles.placeholderImage}>
-                      <MaterialCommunityIcons name="parking" size={48} color="#ccc" />
-                    </View>
-                  )}
                   
-                  <View style={styles.parkingInfo}>
-                    <Text style={styles.parkingName}>{spot.name}</Text>
-                    <Text style={styles.parkingLocation}>📍 {spot.location}</Text>
-                    <Text style={styles.parkingPrice}>
-                      💰 {formatEther(spot.rent_price)} MNT/天
-                    </Text>
-                    {spot.renter !== '0x0000000000000000000000000000000000000000' && (
-                      <Text style={styles.rentStatus}>🔒 已租出</Text>
-                    )}
+                    <View style={styles.parkingInfo}>
+                      <Text style={styles.parkingName}>{spot.name}</Text>
+                      <Text style={styles.parkingLocation}>📍 {spot.location}</Text>
+                      <Text style={styles.parkingPrice}>
+                        💰 {formatEther(spot.rent_price)} MNT/天
+                      </Text>
+                      {spot.renter !== '0x0000000000000000000000000000000000000000' && (
+                        <Text style={styles.rentStatus}>🔒 已租出</Text>
+                      )}
+                    </View>
                   </View>
-                </View>
-              ))}
+                );
+              })}
             </>
           )}
           
