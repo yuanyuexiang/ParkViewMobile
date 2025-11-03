@@ -26,19 +26,33 @@ export default function MapScreen() {
   // 当车位数据加载完成后,发送到 WebView
   useEffect(() => {
     if (parkingSpots.length > 0 && webViewRef.current && webViewLoaded) {
-      const markers = parkingSpots.map((spot) => ({
-        id: spot.id.toString(),
-        name: spot.name,
-        location: spot.location,
-        picture: spot.picture, // 添加图片URL
-        latitude: Number(spot.latitude) / 1000000,
-        longitude: Number(spot.longitude) / 1000000,
-        rentPrice: formatEther(spot.rent_price),
-        isRented: spot.renter !== '0x0000000000000000000000000000000000000000',
-        owner: spot.owner,
-      })).filter(m => m.latitude !== 0 && m.longitude !== 0);
+      const markers = parkingSpots.map((spot) => {
+        // 处理图片 URL
+        let pictureUrl = spot.picture;
+        
+        // 如果是相对路径 /tcw.jpg，使用占位图或默认图片
+        if (pictureUrl === '/tcw.jpg' || !pictureUrl || pictureUrl.startsWith('/')) {
+          // 使用免费的占位图服务
+          pictureUrl = 'https://images.unsplash.com/photo-1506521781263-d8422e82f27a?w=280&h=160&fit=crop';
+          // 或者使用 placeholder
+          // pictureUrl = 'https://via.placeholder.com/280x160/667eea/ffffff?text=🅿️+Parking';
+        }
+        
+        return {
+          id: spot.id.toString(),
+          name: spot.name,
+          location: spot.location,
+          picture: pictureUrl, // 使用处理后的图片URL
+          latitude: Number(spot.latitude) / 1000000,
+          longitude: Number(spot.longitude) / 1000000,
+          rentPrice: formatEther(spot.rent_price),
+          isRented: spot.renter !== '0x0000000000000000000000000000000000000000',
+          owner: spot.owner,
+        };
+      }).filter(m => m.latitude !== 0 && m.longitude !== 0);
 
       console.log('📍 准备发送标记数据:', markers.length, '个车位');
+      console.log('📷 图片数据:', markers.map(m => ({ name: m.name, picture: m.picture || '无图片' })));
 
       // 发送标记数据到 WebView
       setTimeout(() => {
