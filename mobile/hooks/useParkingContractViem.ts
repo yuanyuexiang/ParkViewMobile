@@ -17,7 +17,41 @@ async function sendTransaction(
   data: string,
   value: string = '0x0'
 ): Promise<string> {
-  console.log('📝 发送交易请求到钱包...');
+  console.log('📝 准备发送交易请求到钱包...', {
+    from,
+    to,
+    chainId,
+    hasData: !!data,
+    value,
+    sessionTopic: session?.topic,
+  });
+  
+  // 验证 session 的 namespace 配置
+  console.log('🔍 检查 Session Namespaces:', {
+    namespaces: session?.namespaces,
+    eip155Chains: session?.namespaces?.eip155?.chains,
+    accounts: session?.namespaces?.eip155?.accounts,
+  });
+  
+  const chainIdString = `eip155:${chainId}`;
+  console.log('📋 请求的 ChainId:', chainIdString);
+  
+  // 检查 session 是否支持该 chainId
+  const supportedChains = session?.namespaces?.eip155?.chains || [];
+  if (!supportedChains.includes(chainIdString)) {
+    console.error('❌ Session 不支持该 ChainId!', {
+      requested: chainIdString,
+      supported: supportedChains,
+    });
+    throw new Error(
+      '网络不匹配！\n' +
+      '请在 MetaMask 中切换到 Mantle Sepolia 测试网络\n\n' +
+      '网络信息：\n' +
+      'Chain ID: 5003\n' +
+      'RPC: https://rpc.sepolia.mantle.xyz\n' +
+      '区块浏览器: https://sepolia.mantlescan.xyz'
+    );
+  }
   
   const tx = {
     from,
@@ -26,27 +60,47 @@ async function sendTransaction(
     value,
   };
 
-  // 通过 WalletConnect 发送交易
-  const txHash = await signClient.request({
-    topic: session.topic,
-    chainId: `eip155:${chainId}`,
-    request: {
+  try {
+    console.log('📱 调用 WalletConnect 请求钱包授权...', {
+      topic: session.topic,
+      chainId: chainIdString,
       method: 'eth_sendTransaction',
-      params: [tx],
-    },
-  });
+    });
+    
+    // 通过 WalletConnect 发送交易
+    const txHash = await signClient.request({
+      topic: session.topic,
+      chainId: chainIdString,
+      request: {
+        method: 'eth_sendTransaction',
+        params: [tx],
+      },
+    });
 
-  console.log('✅ 交易已发送:', txHash);
-  console.log('⏳ 等待交易确认...');
+    console.log('✅ 交易已发送:', txHash);
+    console.log('⏳ 等待交易确认...');
 
-  // 等待交易确认
-  const receipt = await publicClient.waitForTransactionReceipt({
-    hash: txHash as `0x${string}`,
-  });
+    // 等待交易确认
+    const receipt = await publicClient.waitForTransactionReceipt({
+      hash: txHash as `0x${string}`,
+    });
 
-  console.log('✅ 交易已确认!', receipt);
-  
-  return txHash as string;
+    console.log('✅ 交易已确认!', {
+      hash: txHash,
+      blockNumber: receipt.blockNumber,
+      status: receipt.status,
+    });
+    
+    return txHash as string;
+  } catch (error) {
+    console.error('❌ 发送交易失败:', {
+      error: error instanceof Error ? error.message : error,
+      from,
+      to,
+      chainId,
+    });
+    throw error;
+  }
 }
 
 /**
@@ -539,6 +593,11 @@ export function useBurnParkingSpot() {
     }
 
     if (!signClient || !session) {
+      console.error('❌ WalletConnect 状态检查失败:', {
+        hasSignClient: !!signClient,
+        hasSession: !!session,
+        sessionTopic: session?.topic,
+      });
       throw new Error('WalletConnect 未连接');
     }
 
@@ -548,7 +607,13 @@ export function useBurnParkingSpot() {
       setHash(null);
       setError(null);
 
-      console.log('🔥 销毁车位:', spotId);
+      console.log('🔥 准备销毁车位:', {
+        spotId,
+        address,
+        hasSignClient: !!signClient,
+        hasSession: !!session,
+        chainId,
+      });
 
       // 编码函数调用
       const data = encodeFunctionData({
@@ -557,7 +622,15 @@ export function useBurnParkingSpot() {
         args: [BigInt(spotId)],
       });
 
+      console.log('📝 已编码交易数据:', {
+        to: CONTRACT_ADDRESS,
+        from: address,
+        data,
+        functionName: 'burnParkingSpot',
+      });
+
       // 发送真实交易
+      console.log('🚀 开始发送交易到钱包...');
       const txHash = await sendTransaction(
         signClient,
         session,
@@ -570,13 +643,17 @@ export function useBurnParkingSpot() {
       setHash(txHash);
       setIsSuccess(true);
       
-      console.log('✅ 车位销毁成功!');
+      console.log('✅ 车位销毁成功! TxHash:', txHash);
 
       return txHash;
     } catch (err) {
       const error = err as Error;
       setError(error);
-      console.error('❌ 销毁车位失败:', error);
+      console.error('❌ 销毁车位失败:', {
+        error: error.message,
+        stack: error.stack,
+        spotId,
+      });
       throw error;
     } finally {
       setIsPending(false);
