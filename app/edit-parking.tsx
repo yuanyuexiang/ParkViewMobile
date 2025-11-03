@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,28 +13,38 @@ import {
   Platform,
   Modal,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { WebView } from 'react-native-webview';
 import { useWallet } from '@/mobile/contexts/WalletContext';
-import { useMintParkingSpot } from '@/mobile/hooks/useParkingContractViem';
+import { useUpdateParkingSpot } from '@/mobile/hooks/useParkingContractViem';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-export default function AddParkingScreen() {
+export default function EditParkingScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const { isConnected, address } = useWallet();
-  const { mintParkingSpot, isPending, isSuccess } = useMintParkingSpot();
+  const { updateParkingSpot, isPending, isSuccess } = useUpdateParkingSpot();
+
+  // 从路由参数获取车位信息
+  const spotId = params.id as string;
+  const initialName = params.name as string;
+  const initialLocation = params.location as string;
+  const initialRentPrice = params.rentPrice as string;
+  const initialPicture = params.picture as string;
+  const initialLatitude = parseFloat(params.latitude as string);
+  const initialLongitude = parseFloat(params.longitude as string);
 
   // 表单状态
-  const [name, setName] = useState('');
-  const [location, setLocation] = useState('');
-  const [rentPrice, setRentPrice] = useState('');
-  const [imageUri, setImageUri] = useState<string | null>(null);
-  const [latitude, setLatitude] = useState<number | null>(null);
-  const [longitude, setLongitude] = useState<number | null>(null);
+  const [name, setName] = useState(initialName || '');
+  const [location, setLocation] = useState(initialLocation || '');
+  const [rentPrice, setRentPrice] = useState(initialRentPrice || '');
+  const [imageUri, setImageUri] = useState<string | null>(initialPicture || null);
+  const [latitude, setLatitude] = useState<number | null>(initialLatitude || null);
+  const [longitude, setLongitude] = useState<number | null>(initialLongitude || null);
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
-  const [uploadedImageUrl, setUploadedImageUrl] = useState<string>('');
+  const [uploadedImageUrl, setUploadedImageUrl] = useState<string>(initialPicture || '');
   
   // 地图选点状态
   const [showMapPicker, setShowMapPicker] = useState(false);
@@ -104,9 +114,9 @@ export default function AddParkingScreen() {
       }
     } catch (error) {
       console.error('上传图片失败:', error);
-      Alert.alert('上传失败', '图片上传失败,将使用默认图片');
-      // 即使上传失败也允许继续创建
-      setUploadedImageUrl('https://images.unsplash.com/photo-1506521781263-d8422e82f27a?w=800&h=450&fit=crop');
+      Alert.alert('上传失败', '图片上传失败,将使用原图片');
+      // 保持原来的图片
+      setUploadedImageUrl(initialPicture);
     } finally {
       setIsUploadingImage(false);
     }
@@ -164,27 +174,29 @@ export default function AddParkingScreen() {
     }
 
     if (latitude === null || longitude === null) {
-      Alert.alert('提示', '请点击"获取当前位置"按钮获取GPS坐标');
+      Alert.alert('提示', '请点击"在地图上选择位置"按钮获取GPS坐标');
       return;
     }
 
-    // 确认创建
+    // 确认更新
     Alert.alert(
-      '确认创建',
-      `车位名称: ${name}\n位置: ${location}\n租金: ${rentPrice} MNT/天\n\n确定要创建这个车位吗?`,
+      '确认更新',
+      `车位名称: ${name}\n位置: ${location}\n租金: ${rentPrice} MNT/天\n\n确定要更新这个车位吗?`,
       [
         { text: '取消', style: 'cancel' },
         { 
-          text: '确定创建',
+          text: '确定更新',
           onPress: async () => {
             try {
-              // 使用上传的图片 URL，如果没有则使用默认图片
-              const finalImageUrl = uploadedImageUrl || 'https://images.unsplash.com/photo-1506521781263-d8422e82f27a?w=800&h=450&fit=crop';
+              // 使用上传的图片 URL，如果没有新上传则使用原图
+              const finalImageUrl = uploadedImageUrl || initialPicture;
               
-              console.log('🚀 开始创建车位...');
+              console.log('🔄 开始更新车位...');
+              console.log('车位 ID:', spotId);
               console.log('图片 URL:', finalImageUrl);
               
-              const hash = await mintParkingSpot(
+              const hash = await updateParkingSpot(
+                spotId,
                 name.trim(),
                 finalImageUrl,
                 location.trim(),
@@ -193,22 +205,21 @@ export default function AddParkingScreen() {
                 latitude
               );
 
-              console.log('✅ 车位创建成功! Hash:', hash);
+              console.log('✅ 车位更新成功! Hash:', hash);
               
-              // 重置表单
-              setName('');
-              setLocation('');
-              setRentPrice('');
-              setImageUri(null);
-              setUploadedImageUrl('');
-              setLatitude(null);
-              setLongitude(null);
-              
-              // 跳转到我的车位页面
-              router.push('/(tabs)/my-parking' as any);
+              Alert.alert(
+                '更新成功! 🎉',
+                '车位信息已成功更新',
+                [
+                  {
+                    text: '确定',
+                    onPress: () => router.push('/(tabs)/my-parking' as any)
+                  }
+                ]
+              );
             } catch (error: any) {
-              console.error('❌ 创建车位失败:', error);
-              Alert.alert('创建失败', error.message || '创建车位失败,请重试');
+              console.error('❌ 更新车位失败:', error);
+              Alert.alert('更新失败', error.message || '更新车位失败,请重试');
             }
           }
         },
@@ -227,7 +238,7 @@ export default function AddParkingScreen() {
             <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
               <MaterialCommunityIcons name="arrow-left" size={24} color="#333" />
             </TouchableOpacity>
-            <Text style={styles.title}>添加车位</Text>
+            <Text style={styles.title}>编辑车位</Text>
             <View style={{ width: 24 }} />
           </View>
           <View style={styles.walletInfo}>
@@ -244,6 +255,10 @@ export default function AddParkingScreen() {
                 <Text style={styles.walletText}>未连接钱包</Text>
               </>
             )}
+          </View>
+          <View style={styles.spotIdBadge}>
+            <MaterialCommunityIcons name="identifier" size={16} color="#666" />
+            <Text style={styles.spotIdText}>车位 ID: #{spotId}</Text>
           </View>
         </View>
 
@@ -345,14 +360,16 @@ export default function AddParkingScreen() {
                   {uploadedImageUrl && !isUploadingImage && (
                     <View style={styles.uploadedBadge}>
                       <MaterialCommunityIcons name="check-circle" size={20} color="#4CAF50" />
-                      <Text style={styles.uploadedText}>已上传</Text>
+                      <Text style={styles.uploadedText}>
+                        {uploadedImageUrl === initialPicture ? '原图片' : '已上传'}
+                      </Text>
                     </View>
                   )}
                 </View>
               ) : (
                 <View style={styles.imagePlaceholder}>
                   <MaterialCommunityIcons name="image-plus" size={48} color="#999" />
-                  <Text style={styles.imagePlaceholderText}>点击选择照片</Text>
+                  <Text style={styles.imagePlaceholderText}>点击更换照片</Text>
                   <Text style={styles.imagePlaceholderSubtext}>推荐 16:9 比例</Text>
                 </View>
               )}
@@ -371,13 +388,13 @@ export default function AddParkingScreen() {
             {isPending ? (
               <>
                 <ActivityIndicator color="#fff" size="small" />
-                <Text style={styles.submitButtonText}>创建中...</Text>
+                <Text style={styles.submitButtonText}>更新中...</Text>
               </>
             ) : (
               <>
-                <MaterialCommunityIcons name="plus-circle" size={24} color="#fff" />
+                <MaterialCommunityIcons name="check-circle" size={24} color="#fff" />
                 <Text style={styles.submitButtonText}>
-                  {isConnected ? '创建车位' : '请先连接钱包'}
+                  {isConnected ? '保存更新' : '请先连接钱包'}
                 </Text>
               </>
             )}
@@ -406,15 +423,15 @@ export default function AddParkingScreen() {
           </View>
           <View style={styles.tipItem}>
             <Text style={styles.tipBullet}>•</Text>
-            <Text style={styles.tipText}>点击"在地图上选择位置"可精确选择车位位置</Text>
+            <Text style={styles.tipText}>如不更换图片，将保留原有图片</Text>
           </View>
           <View style={styles.tipItem}>
             <Text style={styles.tipBullet}>•</Text>
-            <Text style={styles.tipText}>照片会自动上传到云端,建议上传真实车位照片</Text>
+            <Text style={styles.tipText}>更新车位需要支付少量 Gas 费用</Text>
           </View>
           <View style={styles.tipItem}>
             <Text style={styles.tipBullet}>•</Text>
-            <Text style={styles.tipText}>创建车位需要支付少量 Gas 费用</Text>
+            <Text style={styles.tipText}>如果车位正在被租用，部分信息可能无法修改</Text>
           </View>
         </View>
       </ScrollView>
@@ -439,7 +456,7 @@ export default function AddParkingScreen() {
           <WebView
             ref={webViewRef}
             originWhitelist={['*']}
-            source={{ html: generateMapPickerHtml() }}
+            source={{ html: generateMapPickerHtml(latitude || 39.9042, longitude || 116.4074) }}
             style={styles.mapWebView}
             javaScriptEnabled={true}
             domStorageEnabled={true}
@@ -457,8 +474,8 @@ export default function AddParkingScreen() {
   );
 }
 
-// 生成地图选点的 HTML
-function generateMapPickerHtml() {
+// 生成地图选点的 HTML (显示当前位置)
+function generateMapPickerHtml(currentLat: number, currentLng: number) {
   return `
     <!DOCTYPE html>
     <html>
@@ -469,6 +486,15 @@ function generateMapPickerHtml() {
         html, body, #container { width: 100%; height: 100%; }
         .marker-label {
           background: #1890ff;
+          color: white;
+          padding: 8px 12px;
+          border-radius: 4px;
+          font-size: 14px;
+          font-weight: bold;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+        .current-marker-label {
+          background: #4CAF50;
           color: white;
           padding: 8px 12px;
           border-radius: 4px;
@@ -489,12 +515,27 @@ function generateMapPickerHtml() {
       <script>
         var map = new AMap.Map('container', {
           zoom: 15,
-          center: [116.4074, 39.9042], // 北京天安门
+          center: [${currentLng}, ${currentLat}], // 当前车位位置
           viewMode: '3D'
         });
 
         var marker = null;
         var geocoder = new AMap.Geocoder();
+
+        // 显示当前位置标记
+        var currentMarker = new AMap.Marker({
+          position: [${currentLng}, ${currentLat}],
+          icon: new AMap.Icon({
+            size: new AMap.Size(40, 50),
+            image: 'https://webapi.amap.com/theme/v1.3/markers/n/mark_g.png',
+            imageSize: new AMap.Size(40, 50)
+          }),
+          label: {
+            content: '<div class="current-marker-label">📍 当前位置</div>',
+            offset: new AMap.Pixel(0, -50)
+          }
+        });
+        map.add(currentMarker);
 
         // 点击地图选择位置
         map.on('click', function(e) {
@@ -503,7 +544,7 @@ function generateMapPickerHtml() {
           
           console.log('地图点击:', lat, lng);
 
-          // 移除旧标记
+          // 移除旧标记（保留当前位置标记）
           if (marker) {
             map.remove(marker);
           }
@@ -517,7 +558,7 @@ function generateMapPickerHtml() {
               imageSize: new AMap.Size(40, 50)
             }),
             label: {
-              content: '<div class="marker-label">📍 选中位置</div>',
+              content: '<div class="marker-label">📍 新位置</div>',
               offset: new AMap.Pixel(0, -50)
             }
           });
@@ -584,10 +625,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
+    marginBottom: 8,
   },
   walletText: {
     fontSize: 12,
     color: '#666',
+  },
+  spotIdBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#e3f2fd',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  spotIdText: {
+    fontSize: 12,
+    color: '#1976d2',
+    fontWeight: '600',
   },
   form: {
     padding: 16,
@@ -621,10 +677,10 @@ const styles = StyleSheet.create({
     borderColor: '#ddd',
     borderRadius: 8,
     paddingHorizontal: 12,
-    paddingVertical: 0,
+    paddingVertical: 14,
     fontSize: 16,
     color: '#333',
-    minHeight: 80,
+    minHeight: 50,
   },
   locationInputContainer: {
     marginBottom: 8,
@@ -651,9 +707,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 8,
-  },
-  locationButtonDisabled: {
-    backgroundColor: '#a5d6a7',
   },
   locationButtonText: {
     color: '#fff',
@@ -749,7 +802,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   submitButton: {
-    backgroundColor: '#2196F3',
+    backgroundColor: '#ff9800',
     borderRadius: 8,
     padding: 16,
     alignItems: 'center',

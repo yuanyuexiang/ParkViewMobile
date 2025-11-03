@@ -5,6 +5,51 @@ import { useWallet } from '../contexts/WalletContext';
 import ParkingLotABI from '@/app/abi/ParkingLot.json';
 
 /**
+ * 发送交易的辅助函数
+ * 通过 WalletConnect 发送交易并等待确认
+ */
+async function sendTransaction(
+  signClient: any,
+  session: any,
+  chainId: number,
+  from: string,
+  to: string,
+  data: string,
+  value: string = '0x0'
+): Promise<string> {
+  console.log('📝 发送交易请求到钱包...');
+  
+  const tx = {
+    from,
+    to,
+    data,
+    value,
+  };
+
+  // 通过 WalletConnect 发送交易
+  const txHash = await signClient.request({
+    topic: session.topic,
+    chainId: `eip155:${chainId}`,
+    request: {
+      method: 'eth_sendTransaction',
+      params: [tx],
+    },
+  });
+
+  console.log('✅ 交易已发送:', txHash);
+  console.log('⏳ 等待交易确认...');
+
+  // 等待交易确认
+  const receipt = await publicClient.waitForTransactionReceipt({
+    hash: txHash as `0x${string}`,
+  });
+
+  console.log('✅ 交易已确认!', receipt);
+  
+  return txHash as string;
+}
+
+/**
  * 车位数据类型
  */
 export interface ParkingSpot {
@@ -137,10 +182,10 @@ export function useMyParkingSpots() {
 }
 
 /**
- * 铸造车位 NFT (实际写入链上)
+ * 铸造车位 NFT (真实写入链上)
  */
 export function useMintParkingSpot() {
-  const { address } = useWallet();
+  const { address, signClient, session, chainId } = useWallet();
   const [isPending, setIsPending] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [hash, setHash] = useState<string | null>(null);
@@ -156,6 +201,10 @@ export function useMintParkingSpot() {
   ) => {
     if (!address) {
       throw new Error('请先连接钱包');
+    }
+
+    if (!signClient || !session) {
+      throw new Error('WalletConnect 未连接');
     }
 
     try {
@@ -179,33 +228,29 @@ export function useMintParkingSpot() {
       const longitudeScaled = BigInt(Math.round(longitude * 1000000)); // 精度 6 位小数
       const latitudeScaled = BigInt(Math.round(latitude * 1000000));
 
-      // 使用 viem 的 simulateContract 进行模拟调用
-      const { request } = await publicClient.simulateContract({
-        address: CONTRACT_ADDRESS,
+      // 编码函数调用
+      const data = encodeFunctionData({
         abi: ParkingLotABI,
         functionName: 'mintParkingSpot',
         args: [name, picture, location, rentPriceWei, longitudeScaled, latitudeScaled],
-        account: address as Address,
       });
 
-      console.log('✅ 合约模拟成功,准备发送交易...');
-      console.log('⚠️ 注意: 演示模式下无法发送真实交易');
-      console.log('📝 交易参数:', request);
-
-      // TODO: 在生产环境中,需要使用 walletClient 发送交易
-      // const txHash = await walletClient.writeContract(request);
-      // 
-      // 当前演示模式,模拟交易成功
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      const mockHash = '0x' + Math.random().toString(16).substring(2, 66);
+      // 发送真实交易
+      const txHash = await sendTransaction(
+        signClient,
+        session,
+        chainId,
+        address,
+        CONTRACT_ADDRESS,
+        data
+      );
       
-      setHash(mockHash);
+      setHash(txHash);
       setIsSuccess(true);
       
-      console.log('✅ 交易成功 (模拟):', mockHash);
-      console.log('💡 提示: 连接真实钱包后将发送真实交易');
+      console.log('✅ 车位创建成功!');
 
-      return mockHash;
+      return txHash;
     } catch (err) {
       const error = err as Error;
       setError(error);
@@ -214,7 +259,7 @@ export function useMintParkingSpot() {
     } finally {
       setIsPending(false);
     }
-  }, [address]);
+  }, [address, signClient, session, chainId]);
 
   return {
     mintParkingSpot,
@@ -226,10 +271,10 @@ export function useMintParkingSpot() {
 }
 
 /**
- * 租用车位 (实际写入链上)
+ * 租用车位 (真实写入链上)
  */
 export function useRentParkingSpot() {
-  const { address } = useWallet();
+  const { address, signClient, session, chainId } = useWallet();
   const [isPending, setIsPending] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [hash, setHash] = useState<string | null>(null);
@@ -241,6 +286,10 @@ export function useRentParkingSpot() {
   ) => {
     if (!address) {
       throw new Error('请先连接钱包');
+    }
+
+    if (!signClient || !session) {
+      throw new Error('WalletConnect 未连接');
     }
 
     try {
@@ -261,29 +310,32 @@ export function useRentParkingSpot() {
 
       const rentValue = spot.rent_price;
 
-      // 模拟合约调用
-      const { request } = await publicClient.simulateContract({
-        address: CONTRACT_ADDRESS,
+      console.log('💰 租金:', formatEther(rentValue), 'MNT');
+
+      // 编码函数调用
+      const data = encodeFunctionData({
         abi: ParkingLotABI,
         functionName: 'rentParkingSpot',
         args: [spotId, endTime],
-        account: address as Address,
-        value: rentValue, // 支付租金
       });
 
-      console.log('✅ 合约模拟成功');
-      console.log('💰 租金:', formatEther(rentValue), 'MNT');
+      // 发送真实交易 (包含支付的租金)
+      const txHash = await sendTransaction(
+        signClient,
+        session,
+        chainId,
+        address,
+        CONTRACT_ADDRESS,
+        data,
+        `0x${rentValue.toString(16)}` // 租金作为 value
+      );
       
-      // 演示模式模拟
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      const mockHash = '0x' + Math.random().toString(16).substring(2, 66);
-      
-      setHash(mockHash);
+      setHash(txHash);
       setIsSuccess(true);
       
-      console.log('✅ 租用成功 (模拟):', mockHash);
+      console.log('✅ 租用成功!');
 
-      return mockHash;
+      return txHash;
     } catch (err) {
       const error = err as Error;
       setError(error);
@@ -292,7 +344,7 @@ export function useRentParkingSpot() {
     } finally {
       setIsPending(false);
     }
-  }, [address]);
+  }, [address, signClient, session, chainId]);
 
   return {
     rentParkingSpot,
@@ -307,7 +359,7 @@ export function useRentParkingSpot() {
  * 终止租赁 (实际写入链上)
  */
 export function useTerminateRental() {
-  const { address } = useWallet();
+  const { address, signClient, session, chainId } = useWallet();
   const [isPending, setIsPending] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [hash, setHash] = useState<string | null>(null);
@@ -318,6 +370,10 @@ export function useTerminateRental() {
       throw new Error('请先连接钱包');
     }
 
+    if (!signClient || !session) {
+      throw new Error('WalletConnect 未连接');
+    }
+
     try {
       setIsPending(true);
       setIsSuccess(false);
@@ -326,27 +382,29 @@ export function useTerminateRental() {
 
       console.log('🛑 开始终止租赁:', { spotId: spotId.toString() });
 
-      // 模拟合约调用
-      const { request } = await publicClient.simulateContract({
-        address: CONTRACT_ADDRESS,
+      // 编码函数调用
+      const data = encodeFunctionData({
         abi: ParkingLotABI,
         functionName: 'terminateRental',
         args: [spotId],
-        account: address as Address,
       });
 
-      console.log('✅ 合约模拟成功');
+      // 发送真实交易
+      const txHash = await sendTransaction(
+        signClient,
+        session,
+        chainId,
+        address,
+        CONTRACT_ADDRESS,
+        data
+      );
       
-      // 演示模式模拟
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      const mockHash = '0x' + Math.random().toString(16).substring(2, 66);
-      
-      setHash(mockHash);
+      setHash(txHash);
       setIsSuccess(true);
       
-      console.log('✅ 终止租赁成功 (模拟):', mockHash);
+      console.log('✅ 终止租赁成功!');
 
-      return mockHash;
+      return txHash;
     } catch (err) {
       const error = err as Error;
       setError(error);
@@ -355,7 +413,7 @@ export function useTerminateRental() {
     } finally {
       setIsPending(false);
     }
-  }, [address]);
+  }, [address, signClient, session, chainId]);
 
   return {
     terminateRental,
@@ -367,42 +425,169 @@ export function useTerminateRental() {
 }
 
 /**
- * 销毁车位 NFT
+ * 更新车位信息
  */
-export function useBurnParkingSpot() {
-  const { address } = useWallet();
+export function useUpdateParkingSpot() {
+  const { address, signClient, session, chainId } = useWallet();
   const [isPending, setIsPending] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [hash, setHash] = useState<string | null>(null);
+  const [error, setError] = useState<Error | null>(null);
 
-  const burnParkingSpot = useCallback(async (spotId: bigint) => {
+  const updateParkingSpot = useCallback(async (
+    tokenId: string,
+    name: string,
+    picture: string,
+    location: string,
+    rentPrice: string,
+    longitude: number,
+    latitude: number
+  ) => {
     if (!address) {
-      throw new Error('Wallet not connected');
+      throw new Error('请先连接钱包');
+    }
+
+    if (!signClient || !session) {
+      throw new Error('WalletConnect 未连接');
     }
 
     try {
       setIsPending(true);
       setIsSuccess(false);
       setHash(null);
+      setError(null);
 
-      // TODO: 实现实际的合约写入逻辑
-      console.log('Burning parking spot:', { spotId });
+      console.log('🔄 更新车位信息:', {
+        tokenId,
+        name,
+        location,
+        rentPrice,
+        longitude,
+        latitude,
+      });
 
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // 转换租金价格为 wei
+      const rentPriceInWei = parseEther(rentPrice);
+
+      // 转换经纬度为合约所需格式 (乘以 1,000,000)
+      const longitudeScaled = BigInt(Math.round(longitude * 1000000));
+      const latitudeScaled = BigInt(Math.round(latitude * 1000000));
+
+      // 编码函数调用
+      const data = encodeFunctionData({
+        abi: ParkingLotABI,
+        functionName: 'updateParkingSpot',
+        args: [
+          BigInt(tokenId),
+          name,
+          picture,
+          location,
+          rentPriceInWei,
+          longitudeScaled,
+          latitudeScaled,
+        ],
+      });
+
+      // 发送真实交易
+      const txHash = await sendTransaction(
+        signClient,
+        session,
+        chainId,
+        address,
+        CONTRACT_ADDRESS,
+        data
+      );
+      
+      setHash(txHash);
       setIsSuccess(true);
-      setHash('0x' + Math.random().toString(16).substring(2));
-    } catch (error) {
-      console.error('Failed to burn parking spot:', error);
+      
+      console.log('✅ 车位更新成功!');
+
+      return txHash;
+    } catch (err) {
+      const error = err as Error;
+      setError(error);
+      console.error('❌ 更新车位失败:', error);
       throw error;
     } finally {
       setIsPending(false);
     }
-  }, [address]);
+  }, [address, signClient, session, chainId]);
+
+  return {
+    updateParkingSpot,
+    isPending,
+    isSuccess,
+    hash,
+    error,
+  };
+}
+
+/**
+ * 销毁车位 NFT
+ */
+export function useBurnParkingSpot() {
+  const { address, signClient, session, chainId } = useWallet();
+  const [isPending, setIsPending] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [hash, setHash] = useState<string | null>(null);
+  const [error, setError] = useState<Error | null>(null);
+
+  const burnParkingSpot = useCallback(async (spotId: string) => {
+    if (!address) {
+      throw new Error('请先连接钱包');
+    }
+
+    if (!signClient || !session) {
+      throw new Error('WalletConnect 未连接');
+    }
+
+    try {
+      setIsPending(true);
+      setIsSuccess(false);
+      setHash(null);
+      setError(null);
+
+      console.log('🔥 销毁车位:', spotId);
+
+      // 编码函数调用
+      const data = encodeFunctionData({
+        abi: ParkingLotABI,
+        functionName: 'burnParkingSpot',
+        args: [BigInt(spotId)],
+      });
+
+      // 发送真实交易
+      const txHash = await sendTransaction(
+        signClient,
+        session,
+        chainId,
+        address,
+        CONTRACT_ADDRESS,
+        data
+      );
+      
+      setHash(txHash);
+      setIsSuccess(true);
+      
+      console.log('✅ 车位销毁成功!');
+
+      return txHash;
+    } catch (err) {
+      const error = err as Error;
+      setError(error);
+      console.error('❌ 销毁车位失败:', error);
+      throw error;
+    } finally {
+      setIsPending(false);
+    }
+  }, [address, signClient, session, chainId]);
 
   return {
     burnParkingSpot,
     isPending,
     isSuccess,
     hash,
+    error,
   };
 }

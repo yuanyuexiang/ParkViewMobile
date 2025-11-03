@@ -1,9 +1,10 @@
 import { View, StyleSheet, ScrollView, TouchableOpacity, Text, RefreshControl, Alert, Image } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useMyParkingSpots } from '@/mobile/hooks/useParkingContractViem';
+import { useMyParkingSpots, useBurnParkingSpot } from '@/mobile/hooks/useParkingContractViem';
 import { useWallet } from '@/mobile/contexts/WalletContext';
 import { formatEther } from 'viem';
+import { useState } from 'react';
 
 /**
  * 我的车位页面
@@ -13,6 +14,8 @@ export default function MyParkingScreen() {
   const router = useRouter();
   const { isConnected } = useWallet();
   const { parkingSpots, isLoading, refetch } = useMyParkingSpots();
+  const { burnParkingSpot, isPending: isDeleting } = useBurnParkingSpot();
+  const [deletingSpotId, setDeletingSpotId] = useState<string | null>(null);
 
   const handleRefresh = () => {
     refetch();
@@ -24,6 +27,72 @@ export default function MyParkingScreen() {
       return;
     }
     router.push({ pathname: '/add-parking' } as any);
+  };
+
+  // 编辑车位
+  const handleEditParking = (spot: any) => {
+    const latitude = Number(spot.latitude) / 1000000;
+    const longitude = Number(spot.longitude) / 1000000;
+
+    router.push({
+      pathname: '/edit-parking',
+      params: {
+        id: spot.id.toString(),
+        name: spot.name,
+        location: spot.location,
+        rentPrice: formatEther(spot.rent_price),
+        picture: spot.picture,
+        latitude: latitude.toString(),
+        longitude: longitude.toString(),
+      }
+    } as any);
+  };
+
+  // 删除车位
+  const handleDeleteParking = (spot: any) => {
+    // 检查是否正在被租用
+    if (spot.renter !== '0x0000000000000000000000000000000000000000') {
+      Alert.alert(
+        '无法删除',
+        '该车位正在被租用中，无法删除。\n\n请等待租期结束后再删除。',
+        [{ text: '知道了' }]
+      );
+      return;
+    }
+
+    // 确认删除
+    Alert.alert(
+      '确认删除',
+      `确定要删除车位 "${spot.name}" 吗？\n\n此操作不可撤销！`,
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '删除',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setDeletingSpotId(spot.id.toString());
+              console.log('🔥 开始删除车位:', spot.id.toString());
+              
+              await burnParkingSpot(spot.id.toString());
+              
+              console.log('✅ 车位删除成功');
+              Alert.alert('删除成功', '车位已成功删除');
+              
+              // 刷新列表
+              setTimeout(() => {
+                refetch();
+                setDeletingSpotId(null);
+              }, 1000);
+            } catch (error: any) {
+              console.error('❌ 删除车位失败:', error);
+              Alert.alert('删除失败', error.message || '删除车位失败，请重试');
+              setDeletingSpotId(null);
+            }
+          }
+        }
+      ]
+    );
   };
 
   return (
@@ -60,6 +129,8 @@ export default function MyParkingScreen() {
                   pictureUrl = 'https://images.unsplash.com/photo-1506521781263-d8422e82f27a?w=280&h=160&fit=crop';
                 }
                 
+                const isBeingDeleted = deletingSpotId === spot.id.toString();
+                
                 return (
                   <View key={spot.id.toString()} style={styles.parkingCard}>
                     {/* 车位图片 */}
@@ -78,6 +149,39 @@ export default function MyParkingScreen() {
                       {spot.renter !== '0x0000000000000000000000000000000000000000' && (
                         <Text style={styles.rentStatus}>🔒 已租出</Text>
                       )}
+
+                      {/* 操作按钮 */}
+                      <View style={styles.actionButtons}>
+                        <TouchableOpacity
+                          style={[styles.actionButton, styles.editButton]}
+                          onPress={() => handleEditParking(spot)}
+                          disabled={isBeingDeleted}
+                        >
+                          <MaterialCommunityIcons name="pencil" size={18} color="#fff" />
+                          <Text style={styles.actionButtonText}>编辑</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={[
+                            styles.actionButton,
+                            styles.deleteButton,
+                            isBeingDeleted && styles.actionButtonDisabled
+                          ]}
+                          onPress={() => handleDeleteParking(spot)}
+                          disabled={isBeingDeleted}
+                        >
+                          {isBeingDeleted ? (
+                            <>
+                              <Text style={styles.actionButtonText}>删除中...</Text>
+                            </>
+                          ) : (
+                            <>
+                              <MaterialCommunityIcons name="delete" size={18} color="#fff" />
+                              <Text style={styles.actionButtonText}>删除</Text>
+                            </>
+                          )}
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   </View>
                 );
@@ -194,6 +298,34 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#52c41a',
     marginTop: 8,
+    fontWeight: '600',
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  editButton: {
+    backgroundColor: '#ff9800',
+  },
+  deleteButton: {
+    backgroundColor: '#f44336',
+  },
+  actionButtonDisabled: {
+    backgroundColor: '#ccc',
+  },
+  actionButtonText: {
+    color: '#fff',
+    fontSize: 14,
     fontWeight: '600',
   },
   fab: {

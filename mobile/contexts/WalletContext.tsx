@@ -21,6 +21,8 @@ interface WalletContextType {
   isConnected: boolean;
   isConnecting: boolean;
   isInitialized: boolean;
+  signClient: SignClient | null;
+  session: SessionTypes.Struct | null;
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
   switchNetwork: (chainId: number) => Promise<void>;
@@ -117,31 +119,27 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
       if (uri) {
         console.log('📱 Opening MetaMask with WC URI...');
-        // 打开 MetaMask
-        const wcUri = `metamask://wc?uri=${encodeURIComponent(uri)}`;
-        const canOpen = await Linking.canOpenURL(wcUri);
         
-        if (canOpen) {
+        // 直接打开 MetaMask，不等待 canOpenURL
+        const wcUri = `metamask://wc?uri=${encodeURIComponent(uri)}`;
+        
+        try {
           await Linking.openURL(wcUri);
-          console.log('✅ MetaMask opened');
-        } else {
-          console.log('⚠️ Cannot open MetaMask deep link');
+          console.log('✅ MetaMask opened successfully');
+        } catch (linkError) {
+          console.log('⚠️ Failed to open MetaMask:', linkError);
           Alert.alert(
-            '打开 MetaMask',
-            `请在 MetaMask 中扫描二维码:\n\n${uri}`,
-            [
-              { text: '取消', style: 'cancel' },
-              { text: '复制 URI', onPress: () => {
-                // 这里可以复制到剪贴板
-                console.log('WC URI:', uri);
-              }},
-            ]
+            '无法打开 MetaMask',
+            '请确保已安装 MetaMask 应用',
+            [{ text: '确定' }]
           );
+          setIsConnecting(false);
+          return;
         }
       }
 
-      // 等待批准
-      console.log('⏳ Waiting for user approval...');
+      // 等待批准 - 这里会等待用户在 MetaMask 中操作
+      console.log('⏳ Waiting for approval in MetaMask...');
       const newSession = await approval();
       setSession(newSession);
 
@@ -149,13 +147,14 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       setAddress(addr);
 
       console.log('✅ Connected to:', addr);
-      Alert.alert('连接成功', `已连接到 ${addr.slice(0, 6)}...${addr.slice(-4)}`);
     } catch (error: any) {
       console.error('❌ Connection error:', error);
-      if (error.message?.includes('User rejected')) {
-        Alert.alert('连接取消', '用户拒绝了连接请求');
+      if (error.message?.includes('User rejected') || error.message?.includes('rejected')) {
+        Alert.alert('连接取消', '您拒绝了连接请求');
+      } else if (error.message?.includes('timeout')) {
+        Alert.alert('连接超时', '连接请求超时，请重试');
       } else {
-        Alert.alert('连接失败', error.message || '无法连接钱包');
+        Alert.alert('连接失败', error.message || '无法连接钱包，请重试');
       }
     } finally {
       setIsConnecting(false);
@@ -217,6 +216,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     isConnected: !!address,
     isConnecting,
     isInitialized,
+    signClient,
+    session,
     connect,
     disconnect,
     switchNetwork,

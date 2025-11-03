@@ -1,18 +1,27 @@
-import { View, StyleSheet, ScrollView, Text, TouchableOpacity, ActivityIndicator, Alert, Image } from 'react-native';
+import { View, StyleSheet, ScrollView, Text, TouchableOpacity, ActivityIndicator, Alert, Image, RefreshControl } from 'react-native';
 import { useWallet } from '@/mobile/contexts/WalletContext';
-import { useAllParkingSpots } from '@/mobile/hooks/useParkingContractViem';
+import { useAllParkingSpots, useTerminateRental } from '@/mobile/hooks/useParkingContractViem';
 import { formatEther } from 'viem';
 import { useEffect, useState } from 'react';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 /**
- * 我的租赁页面
- * 显示用户当前租用的车位列表
+ * 我的租赁页面 - 优化版
+ * 显示用户当前租用的车位列表，支持倒计时和退租
  */
 export default function MyRentalsScreen() {
   const { address, isConnected } = useWallet();
   const { parkingSpots, isLoading, error, refetch } = useAllParkingSpots();
+  const { terminateRental, isPending: isTerminating } = useTerminateRental();
   const [myRentals, setMyRentals] = useState<any[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // 下拉刷新
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await refetch();
+    setRefreshing(false);
+  };
 
   // 筛选出用户租用的车位
   useEffect(() => {
@@ -34,13 +43,56 @@ export default function MyRentalsScreen() {
     return date.toLocaleDateString('zh-CN');
   };
 
-  // 计算剩余天数
-  const getRemainingDays = (endTime: bigint) => {
+  // 计算剩余时间（详细）
+  const getRemainingTime = (endTime: bigint) => {
     const now = Math.floor(Date.now() / 1000);
     const end = Number(endTime);
     const remainingSeconds = end - now;
+    
+    if (remainingSeconds <= 0) {
+      return { days: 0, hours: 0, minutes: 0, expired: true };
+    }
+    
     const days = Math.floor(remainingSeconds / (24 * 60 * 60));
-    return days > 0 ? days : 0;
+    const hours = Math.floor((remainingSeconds % (24 * 60 * 60)) / (60 * 60));
+    const minutes = Math.floor((remainingSeconds % (60 * 60)) / 60);
+    
+    return { days, hours, minutes, expired: false };
+  };
+
+  // 获取租用状态
+  const getRentalStatus = (endTime: bigint) => {
+    const { days, expired } = getRemainingTime(endTime);
+    
+    if (expired) return { text: '已到期', color: '#f5222d', icon: 'alert-circle' };
+    if (days <= 1) return { text: '即将到期', color: '#ff9800', icon: 'clock-alert' };
+    return { text: '租用中', color: '#52c41a', icon: 'check-circle' };
+  };
+
+  // 处理退租
+  const handleTerminateRental = async (spotId: bigint, spotName: string) => {
+    Alert.alert(
+      '确认退租',
+      `确定要退租 "${spotName}" 吗?\n\n注意: 退租后不会退还已支付的租金`,
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '确定退租',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              console.log('🚀 开始退租车位:', spotId);
+              await terminateRental(spotId);
+              console.log('✅ 退租成功');
+              await refetch(); // 刷新列表
+            } catch (error: any) {
+              console.error('❌ 退租失败:', error);
+              Alert.alert('退租失败', error.message || '无法完成退租，请重试');
+            }
+          },
+        },
+      ]
+    );
   };
 
   if (!isConnected) {
@@ -85,7 +137,12 @@ export default function MyRentalsScreen() {
   }
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView 
+      style={styles.container}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
+    >
       <View style={styles.content}>
         <View style={styles.header}>
           <Text style={styles.title}>我的租赁</Text>
@@ -105,7 +162,8 @@ export default function MyRentalsScreen() {
             <Text style={styles.countText}>共 {myRentals.length} 个租赁中的车位</Text>
             
             {myRentals.map((spot) => {
-              const remainingDays = getRemainingDays(spot.rent_end_time);
+              const remainingTime = getRemainingTime(spot.rent_end_time);
+              const status = getRentalStatus(spot.rent_end_time);
               const rentPrice = formatEther(spot.rent_price);
               const lat = (Number(spot.latitude) / 1000000).toFixed(6);
               const lng = (Number(spot.longitude) / 1000000).toFixed(6);
@@ -125,24 +183,18 @@ export default function MyRentalsScreen() {
                     resizeMode="cover"
                   />
                   
-                  <View style={styles.cardHeader}>
-                    <Text style={styles.spotName}>{spot.name}</Text>
-                    {remainingDays > 0 ? (
-                      <Text style={styles.activeTag}>🟢 租赁中</Text>
-                    ) : (
-                      <Text style={styles.expiredTag}>🔴 已过期</Text>
-                    )}
+                  {/* 状态标签 */}
+                  <View style={[styles.statusBadge, { backgroundColor: status.color }]}>
+                    <MaterialCommunityIcons name={status.icon as any} size={14} color="#fff" />
+                    <Text style={styles.statusText}>{status.text}</Text>
                   </View>
-
+                  
                   <View style={styles.cardContent}>
+                    <Text style={styles.spotName}>{spot.name}</Text>
+
                     <View style={styles.infoRow}>
                       <MaterialCommunityIcons name="map-marker" size={16} color="#666" />
                       <Text style={styles.infoText}>{spot.location}</Text>
-                    </View>
-
-                    <View style={styles.infoRow}>
-                      <MaterialCommunityIcons name="crosshairs-gps" size={16} color="#666" />
-                      <Text style={styles.infoText}>{lat}, {lng}</Text>
                     </View>
 
                     <View style={styles.infoRow}>
@@ -150,64 +202,59 @@ export default function MyRentalsScreen() {
                       <Text style={styles.infoText}>{rentPrice} MNT/天</Text>
                     </View>
 
+                    {/* 倒计时 */}
+                    <View style={styles.countdownCard}>
+                      <MaterialCommunityIcons name="timer" size={20} color="#1890ff" />
+                      {remainingTime.expired ? (
+                        <Text style={styles.countdownExpired}>租期已到期</Text>
+                      ) : (
+                        <View style={styles.countdownContent}>
+                          <Text style={styles.countdownLabel}>剩余时间:</Text>
+                          <View style={styles.timeBlocks}>
+                            {remainingTime.days > 0 && (
+                              <View style={styles.timeBlock}>
+                                <Text style={styles.timeValue}>{remainingTime.days}</Text>
+                                <Text style={styles.timeUnit}>天</Text>
+                              </View>
+                            )}
+                            <View style={styles.timeBlock}>
+                              <Text style={styles.timeValue}>{remainingTime.hours}</Text>
+                              <Text style={styles.timeUnit}>时</Text>
+                            </View>
+                            <View style={styles.timeBlock}>
+                              <Text style={styles.timeValue}>{remainingTime.minutes}</Text>
+                              <Text style={styles.timeUnit}>分</Text>
+                            </View>
+                          </View>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* 租期信息 */}
                     <View style={styles.infoRow}>
-                      <MaterialCommunityIcons name="account" size={16} color="#666" />
+                      <MaterialCommunityIcons name="calendar-clock" size={16} color="#666" />
                       <Text style={styles.infoText}>
-                        车主: {spot.owner.slice(0, 6)}...{spot.owner.slice(-4)}
+                        到期时间: {formatTime(spot.rent_end_time)}
                       </Text>
                     </View>
 
-                    <View style={styles.divider} />
-
-                    <View style={styles.timeInfo}>
-                      <View style={styles.timeRow}>
-                        <Text style={styles.timeLabel}>到期时间:</Text>
-                        <Text style={styles.timeValue}>{formatTime(spot.rent_end_time)}</Text>
-                      </View>
-                      <View style={styles.timeRow}>
-                        <Text style={styles.timeLabel}>剩余天数:</Text>
-                        <Text style={[styles.timeValue, remainingDays <= 3 && styles.warningText]}>
-                          {remainingDays} 天
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-
-                  <View style={styles.cardActions}>
-                    <TouchableOpacity 
-                      style={styles.actionButton}
-                      onPress={() => {
-                        Alert.alert(
-                          '车位详情',
-                          `ID: ${spot.id}\n位置: ${lat}, ${lng}\n点击地图标签页可在地图上查看此车位`
-                        );
-                      }}
+                    {/* 退租按钮 */}
+                    <TouchableOpacity
+                      style={[
+                        styles.terminateButton,
+                        isTerminating && styles.terminateButtonDisabled,
+                      ]}
+                      onPress={() => handleTerminateRental(spot.id, spot.name)}
+                      disabled={isTerminating}
                     >
-                      <MaterialCommunityIcons name="map" size={16} color="#1890ff" />
-                      <Text style={styles.actionButtonText}>在地图查看</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity 
-                      style={[styles.actionButton, styles.terminateButton]}
-                      onPress={() => {
-                        Alert.alert(
-                          '终止租赁',
-                          '确定要终止此车位的租赁吗?',
-                          [
-                            { text: '取消', style: 'cancel' },
-                            { 
-                              text: '确定', 
-                              onPress: () => {
-                                console.log('终止租赁:', spot.id);
-                                Alert.alert('提示', '终止租赁功能开发中...');
-                              }
-                            }
-                          ]
-                        );
-                      }}
-                    >
-                      <MaterialCommunityIcons name="close-circle" size={16} color="#ff4d4f" />
-                      <Text style={[styles.actionButtonText, styles.terminateText]}>终止租赁</Text>
+                      {isTerminating ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <>
+                          <MaterialCommunityIcons name="close-circle" size={18} color="#fff" />
+                          <Text style={styles.terminateButtonText}>退租</Text>
+                        </>
+                      )}
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -310,6 +357,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderRadius: 4,
   },
+  buttonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
+  },
   rentalCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -326,39 +378,30 @@ const styles = StyleSheet.create({
     height: 180,
     backgroundColor: '#f0f0f0',
   },
-  placeholderImage: {
-    width: '100%',
-    height: 180,
-    backgroundColor: '#f5f5f5',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  cardHeader: {
+  statusBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
   },
-  spotName: {
-    fontSize: 16,
+  statusText: {
+    color: '#fff',
+    fontSize: 12,
     fontWeight: 'bold',
-    color: '#000',
-    flex: 1,
-  },
-  activeTag: {
-    fontSize: 12,
-    color: '#52c41a',
-    fontWeight: '600',
-  },
-  expiredTag: {
-    fontSize: 12,
-    color: '#ff4d4f',
-    fontWeight: '600',
   },
   cardContent: {
     padding: 16,
+  },
+  spotName: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#000',
+    marginBottom: 12,
   },
   infoRow: {
     flexDirection: 'row',
@@ -371,62 +414,62 @@ const styles = StyleSheet.create({
     color: '#666',
     flex: 1,
   },
-  divider: {
-    height: 1,
-    backgroundColor: '#f0f0f0',
+  countdownCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#e3f2fd',
+    padding: 12,
+    borderRadius: 8,
     marginVertical: 12,
   },
-  timeInfo: {
-    backgroundColor: '#f5f5f5',
-    padding: 12,
-    borderRadius: 4,
-  },
-  timeRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  timeLabel: {
+  countdownExpired: {
     fontSize: 14,
-    color: '#666',
-  },
-  timeValue: {
-    fontSize: 14,
-    color: '#000',
+    color: '#f5222d',
     fontWeight: '600',
   },
-  warningText: {
-    color: '#ff4d4f',
-  },
-  cardActions: {
-    flexDirection: 'row',
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
-  },
-  actionButton: {
+  countdownContent: {
     flex: 1,
+  },
+  countdownLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 6,
+  },
+  timeBlocks: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  timeBlock: {
+    alignItems: 'center',
+  },
+  timeValue: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1890ff',
+  },
+  timeUnit: {
+    fontSize: 10,
+    color: '#666',
+    marginTop: 2,
+  },
+  terminateButton: {
+    backgroundColor: '#ff4d4f',
+    borderRadius: 8,
+    padding: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    gap: 4,
+    gap: 8,
+    marginTop: 12,
   },
-  actionButtonText: {
-    fontSize: 14,
-    color: '#1890ff',
-    marginLeft: 4,
+  terminateButtonDisabled: {
+    backgroundColor: '#ccc',
   },
-  terminateButton: {
-    borderLeftWidth: 1,
-    borderLeftColor: '#f0f0f0',
-  },
-  terminateText: {
-    color: '#ff4d4f',
-  },
-  buttonText: {
+  terminateButtonText: {
     color: '#fff',
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   note: {
     color: '#999',
